@@ -6,6 +6,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/charmbracelet/x/xpty"
 )
@@ -26,6 +29,20 @@ func Spawn(program string, args []string, cols, rows int) (*Session, error) {
 	p, err := xpty.NewPty(cols, rows)
 	if err != nil {
 		return nil, fmt.Errorf("pty: create: %w", err)
+	}
+
+	// On Windows, ConPTY's console output code page does not default to
+	// UTF-8: it typically inherits the OEM/ANSI codepage (e.g. 437 or
+	// 1252). Programs that print UTF-8-encoded text (nerd-font glyphs in
+	// a shell prompt, box-drawing characters, etc.) will then have their
+	// bytes reinterpreted under that legacy codepage, producing mojibake
+	// like "Ôëí" for what should be "" once our emulator parses the
+	// stream as UTF-8. Forcing the codepage to 65001 (UTF-8) before the
+	// child's own initialization runs (profile scripts, prompt themes)
+	// fixes this at the source instead of trying to patch it up after
+	// decoding.
+	if runtime.GOOS == "windows" {
+		program, args = wrapForUTF8(program, args)
 	}
 
 	cmd := exec.Command(program, args...)
@@ -84,6 +101,38 @@ func (s *Session) Close() error {
 // Name returns the child program name.
 func (s *Session) Name() string {
 	return s.cmd.Args[0]
+}
+
+// wrapForUTF8 rewrites program/args so the child's console output code page
+// is switched to UTF-8 (65001) as its first action, before any profile
+// script or prompt theme has a chance to print non-ASCII output under the
+// wrong legacy codepage. Different shells need different incantations, so
+// we branch on the base program name; anything unrecognized is left as-is
+// (e.g. wsl.exe, which runs a Linux userspace that already talks UTF-8).
+func wrapForUTF8(program string, args []string) (string, []string) {
+	base := strings.ToLower(filepath.Base(program))
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+
+	switch base {
+	case "powershell", "pwsh":
+		// Set both the raw console codepage and .NET's Console.OutputEncoding
+		// (PowerShell's own Write-Host/Write-Output path uses the latter),
+		// then hand off to an interactive shell so profile/prompt output
+		// that follows is correctly encoded.
+		init := "chcp 65001 > $null; " +
+			"[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); " +
+			"[Console]::InputEncoding = [Text.UTF8Encoding]::new()"
+		newArgs := append([]string{"-NoExit", "-Command", init}, args...)
+		return program, newArgs
+	case "cmd":
+		// /K keeps the shell open after running the codepage switch, then
+		// falls through to any user-supplied args (or an implicit prompt).
+		cmdLine := "chcp 65001>nul"
+		newArgs := append([]string{"/K", cmdLine}, args...)
+		return program, newArgs
+	default:
+		return program, args
+	}
 }
 
 var _ io.ReadWriteCloser = (*Session)(nil)
