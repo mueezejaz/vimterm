@@ -246,13 +246,54 @@ func (a *App) cancelVisual() {
 	a.dirty.Store(true)
 }
 
-// enterInsert cancels any selection and returns to the shell cursor.
+// enterInsert cancels any selection and returns to the shell cursor. The
+// shell's line editor cursor is moved to the virtual cursor first, so text
+// typed in insert mode lands exactly where the virtual cursor is.
 func (a *App) enterInsert() {
 	a.sel.Cancel()
+	a.moveShellCursorToVirtual()
 	a.vp.GotoBottom()
 	a.mods.Enter(mode.ModeInsert)
 	a.curValid = false
 	a.dirty.Store(true)
+}
+
+// moveShellCursorToVirtual nudges the shell's line editor cursor to the
+// virtual cursor by sending relative arrow-key escapes. Relative moves are
+// independent of the prompt prefix, so this works at any prompt width.
+func (a *App) moveShellCursorToVirtual() {
+	if a.sess == nil || a.vp.Offset() != 0 {
+		return
+	}
+	a.syncCursor()
+	cx, cy := a.emu.Cursor()
+	if a.emu.ScrollbackLen()+cy != a.cur.Line {
+		return
+	}
+	delta := cx - a.cur.Col
+	if delta == 0 {
+		return
+	}
+	if _, err := a.sess.Write(cursorMoveSeq(delta)); err != nil {
+		a.setStatusMsg("write error: " + err.Error())
+	}
+}
+
+// cursorMoveSeq builds the escape sequences that move a line editor cursor
+// by delta cells: positive moves left, negative right.
+func cursorMoveSeq(delta int) []byte {
+	n := delta
+	if n < 0 {
+		n = -n
+	}
+	seq := make([]byte, 0, 4*n)
+	for d := delta; d < 0; d++ {
+		seq = append(seq, '\x1b', '[', 'C') // right
+	}
+	for d := delta; d > 0; d-- {
+		seq = append(seq, '\x1b', '[', 'D') // left
+	}
+	return seq
 }
 
 // enterNormal returns to normal mode, dropping any visual selection. The
