@@ -34,6 +34,12 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionRecordMacro:   a.recordMacro,
 		keybind.ActionPlayMacro:     a.playMacro,
 		keybind.ActionRepeatLast:    a.repeatLast,
+		keybind.ActionFindChar:      func() { a.find.begin(1, false) },
+		keybind.ActionFindCharBack:  func() { a.find.begin(-1, false) },
+		keybind.ActionFindUntil:     func() { a.find.begin(1, true) },
+		keybind.ActionFindUntilBack: func() { a.find.begin(-1, true) },
+		keybind.ActionFindNext:      func() { a.findRepeat(1) },
+		keybind.ActionFindPrev:      func() { a.findRepeat(-1) },
 		keybind.ActionQuit:          a.requestQuit,
 	}
 }

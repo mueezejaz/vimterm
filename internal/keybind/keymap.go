@@ -26,6 +26,12 @@ const (
 	ActionRecordMacro   Action = "record_macro"
 	ActionPlayMacro     Action = "play_macro"
 	ActionRepeatLast    Action = "repeat_last"
+	ActionFindChar      Action = "find_char"
+	ActionFindCharBack  Action = "find_char_back"
+	ActionFindUntil     Action = "find_until"
+	ActionFindUntilBack Action = "find_until_back"
+	ActionFindNext      Action = "find_next"
+	ActionFindPrev      Action = "find_prev"
 	ActionQuit          Action = "quit"
 )
 
@@ -53,6 +59,12 @@ var AllActions = []Action{
 	ActionRecordMacro,
 	ActionPlayMacro,
 	ActionRepeatLast,
+	ActionFindChar,
+	ActionFindCharBack,
+	ActionFindUntil,
+	ActionFindUntilBack,
+	ActionFindNext,
+	ActionFindPrev,
 	ActionQuit,
 }
 

@@ -43,6 +43,12 @@ var nonRepeatable = map[keybind.Action]bool{
 	keybind.ActionRecordMacro:   true,
 	keybind.ActionPlayMacro:     true,
 	keybind.ActionRepeatLast:    true,
+	keybind.ActionFindChar:      true,
+	keybind.ActionFindCharBack:  true,
+	keybind.ActionFindUntil:     true,
+	keybind.ActionFindUntilBack: true,
+	keybind.ActionFindNext:      true,
+	keybind.ActionFindPrev:      true,
 	keybind.ActionQuit:          true,
 }
 

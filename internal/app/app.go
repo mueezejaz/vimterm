@@ -44,6 +44,9 @@ type App struct {
 	repeating bool
 	cmdSeqs   map[string][]keybind.Key
 
+	// f/F/t/T pending state (the target character is dynamic).
+	find findState
+
 	// Status line colors from config.
 	statusFg emulator.Color
 	statusBg emulator.Color
@@ -323,6 +326,16 @@ func (a *App) handleKey(k keybind.Key) {
 		case macro.OutcomeIgnored, macro.OutcomeRecorded:
 			// Not macro-related (or recorded): fall through to the engine.
 		}
+	}
+	if a.find.pending() {
+		// f/F/t/T: consume the next printable key as the target. Any other
+		// key cancels the pending find and is handled normally.
+		if ch, ok := isTarget(k); ok {
+			a.doFind(a.find.pd, a.find.pu, ch)
+			a.dirty.Store(true)
+			return
+		}
+		a.find.clear()
 	}
 	res, action := a.engine.Feed(modeName(a.mods.Current()), k)
 	switch res {

@@ -97,6 +97,12 @@ func defaultNormalBindings() map[string]string {
 		"q":      "record_macro",
 		"@":      "play_macro",
 		".":      "repeat_last",
+		"f":      "find_char",
+		"F":      "find_char_back",
+		"t":      "find_until",
+		"T":      "find_until_back",
+		";":      "find_next",
+		",":      "find_prev",
 		"ctrl+q": "quit",
 	}
 }
@@ -126,6 +132,12 @@ func defaultVisualBindings() map[string]string {
 		"V":      "enter_visual_line",
 		"y":      "yank",
 		"d":      "yank",
+		"f":      "find_char",
+		"F":      "find_char_back",
+		"t":      "find_until",
+		"T":      "find_until_back",
+		";":      "find_next",
+		",":      "find_prev",
 		"i":      "enter_insert",
 		"esc":    "enter_normal",
 		"ctrl+q": "quit",
@@ -272,6 +284,12 @@ status_bg = ""
 "q" = "record_macro"
 "@" = "play_macro"
 "." = "repeat_last"
+"f" = "find_char"
+"F" = "find_char_back"
+"t" = "find_until"
+"T" = "find_until_back"
+";" = "find_next"
+"," = "find_prev"
 "ctrl+q" = "quit"
 
 [keybindings.insert]
@@ -295,6 +313,12 @@ status_bg = ""
 "V" = "enter_visual_line"
 "y" = "yank"
 "d" = "yank"
+"f" = "find_char"
+"F" = "find_char_back"
+"t" = "find_until"
+"T" = "find_until_back"
+";" = "find_next"
+"," = "find_prev"
 "i" = "enter_insert"
 "esc" = "enter_normal"
 "ctrl+q" = "quit"
