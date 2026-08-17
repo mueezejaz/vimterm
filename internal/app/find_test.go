@@ -98,19 +98,32 @@ func TestFindNotFound(t *testing.T) {
 }
 
 func TestFindRepeatSemicolonComma(t *testing.T) {
-	a := findApp(t, "a-b-c-d\r\n")
+	a := findApp(t, "a-b-c-d-e\r\n")
 	press(t, a, keybind.NewRune('f', 0))
 	press(t, a, keybind.NewRune('-', 0))
 	if a.cur.Col != 1 {
 		t.Fatalf("f -: col = %d, want 1", a.cur.Col)
 	}
 	press(t, a, keybind.NewRune(';', 0))
+	press(t, a, keybind.NewRune(';', 0))
+	if a.cur.Col != 5 {
+		t.Fatalf(";;: col = %d, want 5", a.cur.Col)
+	}
+	press(t, a, keybind.NewRune(',', 0))
 	if a.cur.Col != 3 {
-		t.Fatalf(";: col = %d, want 3", a.cur.Col)
+		t.Fatalf(",: col = %d, want 3", a.cur.Col)
 	}
 	press(t, a, keybind.NewRune(',', 0))
 	if a.cur.Col != 1 {
-		t.Fatalf(",: col = %d, want 1", a.cur.Col)
+		t.Fatalf(",,: col = %d, want 1 (keeps marching backward)", a.cur.Col)
+	}
+	press(t, a, keybind.NewRune(',', 0))
+	if a.cur.Col != 1 {
+		t.Fatalf(",,,: col = %d, want 1 (no match left)", a.cur.Col)
+	}
+	press(t, a, keybind.NewRune(';', 0))
+	if a.cur.Col != 3 {
+		t.Fatalf("; after ,,: col = %d, want 3 (forward again)", a.cur.Col)
 	}
 }
 

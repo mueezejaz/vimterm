@@ -81,9 +81,16 @@ func isTarget(k keybind.Key) (rune, bool) {
 }
 
 // doFind runs one f/F/t/T motion with the given direction, until flag and
-// target character, then stores it as the repeat target for ;/, .
+// target character, and stores it as the last find for ;/, . The stored
+// direction is the original command's, so repeats keep a fixed direction.
 func (a *App) doFind(dir int, until bool, ch rune) {
 	a.find.run(dir, until, ch)
+	a.executeFind(dir, until, ch)
+}
+
+// executeFind performs the motion without updating the stored state; used
+// by ;/, so their direction is always relative to the original f/t.
+func (a *App) executeFind(dir int, until bool, ch rune) {
 	a.syncCursor()
 	line := a.bufferLine(a.cur.Line)
 	col := findOnLine(line, a.cur.Col, dir, until, ch)
@@ -98,14 +105,14 @@ func (a *App) doFind(dir int, until bool, ch rune) {
 	a.afterCursorMove()
 }
 
-// findRepeat repeats the last f/t: ; keeps the direction, , flips it.
+// findRepeat repeats the last f/t: ; keeps the original direction, , flips it.
 func (a *App) findRepeat(flip int) {
 	if !a.find.set {
 		a.setStatusMsg("no previous find")
 		a.dirty.Store(true)
 		return
 	}
-	a.doFind(a.find.dir*flip, a.find.until, a.find.ch)
+	a.executeFind(a.find.dir*flip, a.find.until, a.find.ch)
 }
 
 func dirName(dir int) string {
