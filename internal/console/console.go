@@ -23,13 +23,13 @@ type ResizeEvent struct {
 	Cols, Rows int
 }
 
-func (KeyEvent) isEvent()   {}
+func (KeyEvent) isEvent()    {}
 func (ResizeEvent) isEvent() {}
 
 // INPUT_RECORD event types.
 const (
-	eventKey  = 0x0001
-	eventMouse = 0x0002
+	eventKey              = 0x0001
+	eventMouse            = 0x0002
 	eventWindowBufferSize = 0x0004
 )
 
@@ -78,6 +78,7 @@ type Console struct {
 	in, out   windows.Handle
 	origIn    uint32
 	origOut   uint32
+	origCP    uint32
 	events    chan Event
 	done      chan struct{}
 	closeOnce sync.Once
@@ -93,6 +94,14 @@ func Init() (*Console, error) {
 	if err != nil {
 		return nil, fmt.Errorf("console: stdout handle: %w", err)
 	}
+
+	// The host console may be running a legacy codepage (e.g. 850/437);
+	// every UTF-8 byte we write would then be re-decoded per-byte into
+	// mojibake (e.g. "Ôåæ" for "↑"). Force UTF-8 on our own console so the
+	// bytes we emit reach the host terminal unchanged.
+	origCP, _ := windows.GetConsoleOutputCP()
+	windows.SetConsoleOutputCP(65001)
+	windows.SetConsoleCP(65001)
 
 	var origIn, origOut uint32
 	if err := windows.GetConsoleMode(in, &origIn); err != nil {
@@ -117,12 +126,13 @@ func Init() (*Console, error) {
 	}
 
 	c := &Console{
-		in:     in,
-		out:    out,
-		origIn: origIn,
+		in:      in,
+		out:     out,
+		origIn:  origIn,
 		origOut: origOut,
-		events: make(chan Event, 256),
-		done:   make(chan struct{}),
+		origCP:  origCP,
+		events:  make(chan Event, 256),
+		done:    make(chan struct{}),
 	}
 	go c.inputLoop()
 	return c, nil
@@ -163,6 +173,7 @@ func (c *Console) Close() {
 		close(c.done)
 		windows.SetConsoleMode(c.out, c.origOut)
 		windows.SetConsoleMode(c.in, c.origIn)
+		windows.SetConsoleOutputCP(c.origCP)
 	})
 }
 
