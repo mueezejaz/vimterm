@@ -49,6 +49,8 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionMoveWORD:      func() { a.wordMotion(1, wordKindWORD) },
 		keybind.ActionMoveWORDBack:  func() { a.wordMotion(-1, wordKindWORD) },
 		keybind.ActionMoveWORDEnd:   func() { a.wordEndMotion(wordKindWORD) },
+		keybind.ActionPaste:         func() { a.paste(1) },
+		keybind.ActionPasteBefore:   func() { a.paste(-1) },
 		keybind.ActionQuit:          a.requestQuit,
 	}
 }

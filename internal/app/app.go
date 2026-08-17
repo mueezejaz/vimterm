@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"vimterm/internal/clipboard"
 	"vimterm/internal/config"
 	"vimterm/internal/console"
 	"vimterm/internal/emulator"
@@ -26,7 +27,7 @@ import (
 type App struct {
 	cfg  *config.Config
 	con  *console.Console
-	sess *pty.Session
+	sess session
 	emu  emulator.Emulator
 	mods *mode.Manager
 	vp   *screen.Viewport
@@ -51,6 +52,9 @@ type App struct {
 	// the next count-aware action via cnt.
 	count int
 	cnt   int
+
+	// clipRead returns the paste text; overridable in tests.
+	clipRead func() (string, error)
 
 	// Status line colors from config.
 	statusFg emulator.Color
@@ -132,6 +136,7 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 	}
 	a.search = search.New(a.bufferLine)
 	a.macro = macro.New()
+	a.clipRead = clipboard.GetText
 
 	if err := a.applyConfig(cfg); err != nil {
 		con.Close()
@@ -159,6 +164,18 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 	}
 
 	return a, nil
+}
+
+// session is the subset of a shell session the app uses; *pty.Session
+// satisfies it, and tests can substitute a fake.
+type session interface {
+	Write(p []byte) (int, error)
+	Read(p []byte) (int, error)
+	Resize(cols, rows int) error
+	Kill() error
+	Close() error
+	Name() string
+	Wait(ctx context.Context) error
 }
 
 // closeDone signals the main loop that the session has ended or the app is

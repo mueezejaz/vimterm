@@ -97,6 +97,9 @@ func defaultNormalBindings() map[string]string {
 		":":      "command_prompt",
 		"v":      "enter_visual",
 		"V":      "enter_visual_line",
+		"y":      "yank",
+		"p":      "paste",
+		"P":      "paste_before",
 		"q":      "record_macro",
 		"@":      "play_macro",
 		".":      "repeat_last",
@@ -141,6 +144,8 @@ func defaultVisualBindings() map[string]string {
 		"V":      "enter_visual_line",
 		"y":      "yank",
 		"d":      "yank",
+		"p":      "paste",
+		"P":      "paste_before",
 		"f":      "find_char",
 		"F":      "find_char_back",
 		"t":      "find_until",
@@ -337,6 +342,8 @@ status_bg = ""
 "V" = "enter_visual_line"
 "y" = "yank"
 "d" = "yank"
+"p" = "paste"
+"P" = "paste_before"
 "f" = "find_char"
 "F" = "find_char_back"
 "t" = "find_until"

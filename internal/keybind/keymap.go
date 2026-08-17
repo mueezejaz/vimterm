@@ -41,7 +41,9 @@ const (
 	ActionEnterInsertAfter Action = "enter_insert_after"
 	ActionEnterInsertEnd   Action = "enter_insert_end"
 	ActionEnterInsertHome  Action = "enter_insert_home"
-	ActionQuit          Action = "quit"
+	ActionPaste            Action = "paste"
+	ActionPasteBefore      Action = "paste_before"
+	ActionQuit             Action = "quit"
 )
 
 // AllActions lists every action the application understands. Config bindings
@@ -83,6 +85,8 @@ var AllActions = []Action{
 	ActionEnterInsertAfter,
 	ActionEnterInsertEnd,
 	ActionEnterInsertHome,
+	ActionPaste,
+	ActionPasteBefore,
 	ActionQuit,
 }
 
