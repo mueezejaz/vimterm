@@ -36,26 +36,37 @@ func (fs *findState) clear() {
 	fs.pu = false
 }
 
-// find locates the target on one line and returns the cursor column, or -1.
-// The cursor starts at col; f searches right of it, F left of it, t stops
-// one cell before the target, T one cell after.
-func findOnLine(line []rune, col int, dir int, until bool, ch rune) int {
+// find locates the count-th occurrence of the target on one line and
+// returns the cursor column, or -1. The cursor starts at col; f searches
+// right of it, F left of it, t stops one cell before the target, T one
+// cell after.
+func findOnLine(line []rune, col int, dir int, until bool, ch rune, count int) int {
+	n := count
+	if n < 1 {
+		n = 1
+	}
 	if dir > 0 {
 		for i := col + 1; i < len(line); i++ {
 			if line[i] == ch {
-				if until {
-					return i - 1
+				n--
+				if n == 0 {
+					if until {
+						return i - 1
+					}
+					return i
 				}
-				return i
 			}
 		}
 	} else {
 		for i := col - 1; i >= 0; i-- {
 			if line[i] == ch {
-				if until {
-					return i + 1
+				n--
+				if n == 0 {
+					if until {
+						return i + 1
+					}
+					return i
 				}
-				return i
 			}
 		}
 	}
@@ -83,17 +94,18 @@ func isTarget(k keybind.Key) (rune, bool) {
 // doFind runs one f/F/t/T motion with the given direction, until flag and
 // target character, and stores it as the last find for ;/, . The stored
 // direction is the original command's, so repeats keep a fixed direction.
+// A typed count selects the count-th occurrence.
 func (a *App) doFind(dir int, until bool, ch rune) {
 	a.find.run(dir, until, ch)
-	a.executeFind(dir, until, ch)
+	a.executeFind(dir, until, ch, a.takeCount())
 }
 
 // executeFind performs the motion without updating the stored state; used
 // by ;/, so their direction is always relative to the original f/t.
-func (a *App) executeFind(dir int, until bool, ch rune) {
+func (a *App) executeFind(dir int, until bool, ch rune, n int) {
 	a.syncCursor()
 	line := a.bufferLine(a.cur.Line)
-	col := findOnLine(line, a.cur.Col, dir, until, ch)
+	col := findOnLine(line, a.cur.Col, dir, until, ch, n)
 	if col == -1 {
 		a.setStatusMsg(fmt.Sprintf("find: no %q %s", ch, dirName(dir)))
 		a.dirty.Store(true)
@@ -112,7 +124,7 @@ func (a *App) findRepeat(flip int) {
 		a.dirty.Store(true)
 		return
 	}
-	a.executeFind(a.find.dir*flip, a.find.until, a.find.ch)
+	a.executeFind(a.find.dir*flip, a.find.until, a.find.ch, a.takeCount())
 }
 
 func dirName(dir int) string {

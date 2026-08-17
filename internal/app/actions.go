@@ -13,19 +13,19 @@ import (
 // actionMap binds every known action name to its behavior.
 func (a *App) actionMap() map[keybind.Action]func() {
 	return map[keybind.Action]func(){
-		keybind.ActionMoveLeft:      func() { a.moveCursor(0, -1) },
-		keybind.ActionMoveRight:     func() { a.moveCursor(0, 1) },
-		keybind.ActionMoveUp:        func() { a.moveCursor(-1, 0) },
-		keybind.ActionMoveDown:      func() { a.moveCursor(1, 0) },
-		keybind.ActionScrollUp:      func() { a.pageScroll(-1) },
-		keybind.ActionScrollDown:    func() { a.pageScroll(1) },
-		keybind.ActionGotoTop:       func() { a.jumpCursorTop() },
-		keybind.ActionGotoBottom:    func() { a.jumpCursorBottom() },
+		keybind.ActionMoveLeft:      func() { a.moveCursor(0, -a.takeCount()) },
+		keybind.ActionMoveRight:     func() { a.moveCursor(0, a.takeCount()) },
+		keybind.ActionMoveUp:        func() { a.moveCursor(-a.takeCount(), 0) },
+		keybind.ActionMoveDown:      func() { a.moveCursor(a.takeCount(), 0) },
+		keybind.ActionScrollUp:      func() { a.countScroll(-1) },
+		keybind.ActionScrollDown:    func() { a.countScroll(1) },
+		keybind.ActionGotoTop:       func() { a.countGoto(true) },
+		keybind.ActionGotoBottom:    func() { a.countGoto(false) },
 		keybind.ActionEnterInsert:   a.enterInsert,
 		keybind.ActionEnterNormal:   a.enterNormal,
 		keybind.ActionSearchForward: a.openSearch,
-		keybind.ActionSearchNext:    func() { a.nextSearch(1) },
-		keybind.ActionSearchPrev:    func() { a.nextSearch(-1) },
+		keybind.ActionSearchNext:    func() { a.countSearch(1) },
+		keybind.ActionSearchPrev:    func() { a.countSearch(-1) },
 		keybind.ActionCommandPrompt: func() { a.openCommand() },
 		keybind.ActionEnterVisual:   a.enterVisual,
 		keybind.ActionEnterVisLine:  a.enterVisualLine,
@@ -41,6 +41,36 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionFindNext:      func() { a.findRepeat(1) },
 		keybind.ActionFindPrev:      func() { a.findRepeat(-1) },
 		keybind.ActionQuit:          a.requestQuit,
+	}
+}
+
+// countScroll handles Ctrl+U/D: with a count it moves that many lines,
+// otherwise it pages half a screen like Vim.
+func (a *App) countScroll(dl int) {
+	if n := a.takeCount(); n > 1 {
+		a.moveCursor(dl*n, 0)
+	} else {
+		a.pageScroll(dl)
+	}
+}
+
+// countGoto handles gg/G with a count: Ngg or NG jump to line N; without a
+// count gg goes to the top and G to the bottom.
+func (a *App) countGoto(top bool) {
+	if n := a.takeCount(); n > 1 {
+		a.jumpCursorLine(n - 1)
+	} else if top {
+		a.jumpCursorTop()
+	} else {
+		a.jumpCursorBottom()
+	}
+}
+
+// countSearch repeats the search n times.
+func (a *App) countSearch(dir int) {
+	n := a.takeCount()
+	for i := 0; i < n; i++ {
+		a.nextSearch(dir)
 	}
 }
 
@@ -180,6 +210,16 @@ func (a *App) jumpCursorBottom() {
 	a.cur.Line = a.emu.ScrollbackLen() + a.emu.Height() - 1
 	a.cur.Col = 0
 	a.vp.GotoBottom()
+	a.afterCursorMove()
+}
+
+// jumpCursorLine jumps to a 0-based absolute line (counted gg/G).
+func (a *App) jumpCursorLine(line int) {
+	a.syncCursor()
+	a.cur.Line = line
+	a.cur.Col = 0
+	a.clampCursor()
+	a.ensureCursorVisible()
 	a.afterCursorMove()
 }
 

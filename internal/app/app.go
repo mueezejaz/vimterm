@@ -47,6 +47,11 @@ type App struct {
 	// f/F/t/T pending state (the target character is dynamic).
 	find findState
 
+	// Numeric count prefix: digits accumulate in count, then hand off to
+	// the next count-aware action via cnt.
+	count int
+	cnt   int
+
 	// Status line colors from config.
 	statusFg emulator.Color
 	statusBg emulator.Color
@@ -327,6 +332,18 @@ func (a *App) handleKey(k keybind.Key) {
 			// Not macro-related (or recorded): fall through to the engine.
 		}
 	}
+	if !a.mods.Is(mode.ModeInsert) {
+		// Count prefix: digits accumulate in normal and visual modes. A
+		// leading zero is not a count and falls through to the engine.
+		if isDigit(k) {
+			d := int(k.Rune - '0')
+			if a.count != 0 || d != 0 {
+				a.count = a.count*10 + d
+				a.dirty.Store(true)
+				return
+			}
+		}
+	}
 	if a.find.pending() {
 		// f/F/t/T: consume the next printable key as the target. Any other
 		// key cancels the pending find and is handled normally.
@@ -336,17 +353,25 @@ func (a *App) handleKey(k keybind.Key) {
 			return
 		}
 		a.find.clear()
+		a.cnt = 0
 	}
 	res, action := a.engine.Feed(modeName(a.mods.Current()), k)
 	switch res {
 	case keybind.Matched:
 		a.tracker.noteAction(action, a.engine.LastSeq())
 		if fn, ok := a.actions[action]; ok {
+			if countAware[action] {
+				a.cnt = a.count
+				a.count = 0
+			} else {
+				a.count = 0
+			}
 			fn()
 		}
 	case keybind.NoMatch:
 		// Unbound keys pass through only in insert mode; in normal mode they
 		// are swallowed.
+		a.count = 0
 		if a.mods.Is(mode.ModeInsert) {
 			a.tracker.noteBurst(k)
 			a.passthrough(k)

@@ -14,21 +14,26 @@ func TestFindOnLine(t *testing.T) {
 		dir   int
 		until bool
 		ch    rune
+		count int
 		want  int
 	}{
-		{"f finds next", 0, 1, false, 'b', 1},
-		{"f skips to later occurrence", 1, 1, false, 'a', 3},
-		{"f past end not found", 4, 1, false, 'c', 5},
-		{"f not found", 0, 1, false, 'x', -1},
-		{"t stops before", 0, 1, true, 'b', 0},
-		{"t before later occurrence", 1, 1, true, 'a', 2},
-		{"F finds previous", 4, -1, false, 'b', 1},
-		{"F not found", 1, -1, false, 'c', -1},
-		{"T stops after", 4, -1, true, 'b', 2},
-		{"T after later occurrence", 4, -1, true, 'a', 4},
+		{"f finds next", 0, 1, false, 'b', 1, 1},
+		{"f skips to later occurrence", 1, 1, false, 'a', 1, 3},
+		{"f past end not found", 4, 1, false, 'c', 1, 5},
+		{"f not found", 0, 1, false, 'x', 1, -1},
+		{"t stops before", 0, 1, true, 'b', 1, 0},
+		{"t before later occurrence", 1, 1, true, 'a', 1, 2},
+		{"F finds previous", 4, -1, false, 'b', 1, 1},
+		{"F not found", 1, -1, false, 'c', 1, -1},
+		{"T stops after", 4, -1, true, 'b', 1, 2},
+		{"T after later occurrence", 4, -1, true, 'a', 1, 4},
+		{"f count finds second", 0, 1, false, 'b', 2, 4},
+		{"f count beyond end not found", 0, 1, false, 'c', 4, -1},
+		{"t count stops before second", 0, 1, true, 'b', 2, 3},
+		{"F count finds second backward", 5, -1, false, 'b', 2, 1},
 	}
 	for _, c := range cases {
-		got := findOnLine(line, c.col, c.dir, c.until, c.ch)
+		got := findOnLine(line, c.col, c.dir, c.until, c.ch, c.count)
 		if got != c.want {
 			t.Errorf("%s: findOnLine = %d, want %d", c.name, got, c.want)
 		}
