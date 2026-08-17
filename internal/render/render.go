@@ -56,7 +56,7 @@ func Draw(w io.Writer, f *Frame) {
 		lastNonEmpty := -1
 		for x := 0; x < f.Cols; x++ {
 			c := row[x]
-			if c.Content != "" && c.Content != " " {
+			if significant(c) {
 				lastNonEmpty = x
 			}
 		}
@@ -120,6 +120,24 @@ func Draw(w io.Writer, f *Frame) {
 type style struct {
 	fg, bg emulator.Color
 	attrs  uint8
+}
+
+// significant reports whether a cell must be drawn even when its content is
+// a blank: styled cells (the virtual cursor, selection, search highlights,
+// status line) are visible on empty space and must not be swallowed by the
+// trailing erase. The zero value counts as a blank cell.
+func significant(c emulator.Cell) bool {
+	if c.Content != "" && c.Content != " " {
+		return true
+	}
+	if c.Reverse || c.Bold || c.Faint || c.Italic || c.Blink ||
+		c.Conceal || c.Strike || c.Underline {
+		return true
+	}
+	if c.Fg == (emulator.Color{}) && c.Bg == (emulator.Color{}) {
+		return false
+	}
+	return !c.Fg.Default || !c.Bg.Default
 }
 
 const (

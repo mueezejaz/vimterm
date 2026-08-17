@@ -55,6 +55,44 @@ func TestDrawWideChar(t *testing.T) {
 	}
 }
 
+func TestDrawKeepsCursorOnEmptySpace(t *testing.T) {
+	def := emulator.Color{Default: true}
+	f := NewFrame(10, 1)
+	// Text ends at col 2; the virtual cursor sits at col 6, on blank space.
+	f.Cells[0][0] = emulator.Cell{Content: "a", Width: 1, Fg: def, Bg: def}
+	f.Cells[0][1] = emulator.Cell{Content: "b", Width: 1, Fg: def, Bg: def}
+	f.Cells[0][2] = emulator.Cell{Content: "c", Width: 1, Fg: def, Bg: def}
+	f.Cells[0][6] = emulator.Cell{Content: " ", Width: 1, Reverse: true, Fg: def, Bg: def}
+
+	var sb strings.Builder
+	Draw(&sb, f)
+	out := sb.String()
+
+	if !strings.Contains(out, "\x1b[7m ") {
+		t.Errorf("cursor on empty space must be drawn, not erased: %q", out)
+	}
+}
+
+func TestDrawKeepsSelectionOnEmptyLine(t *testing.T) {
+	def := emulator.Color{Default: true}
+	f := NewFrame(10, 1)
+	// An entirely blank row where a line-wise selection reverses cols 2..7.
+	for x := 2; x <= 7; x++ {
+		f.Cells[0][x] = emulator.Cell{Content: " ", Width: 1, Reverse: true, Fg: def, Bg: def}
+	}
+
+	var sb strings.Builder
+	Draw(&sb, f)
+	out := sb.String()
+
+	if !strings.Contains(out, "\x1b[7m ") {
+		t.Errorf("selection on empty line must be drawn, not erased: %q", out)
+	}
+	if !strings.Contains(out, "\x1b[K") {
+		t.Errorf("cells after the selection must be erased: %q", out)
+	}
+}
+
 func TestItoa(t *testing.T) {
 	cases := map[int]string{0: "0", 1: "1", 9: "9", 10: "10", 100: "100", 1000: "1000"}
 	for n, want := range cases {
