@@ -28,7 +28,8 @@ func (ResizeEvent) isEvent() {}
 
 // INPUT_RECORD event types.
 const (
-	eventKey              = 0x0001
+	eventKey  = 0x0001
+	eventMouse = 0x0002
 	eventWindowBufferSize = 0x0004
 )
 
@@ -211,6 +212,13 @@ func (c *Console) inputLoop() {
 				}
 				select {
 				case c.events <- KeyEvent{Key: key}:
+				case <-c.done:
+					return
+				}
+			case eventMouse:
+				me := (*mouseEventRecord)(unsafe.Pointer(&rec.union[0]))
+				select {
+				case c.events <- mouseFromRecord(me):
 				case <-c.done:
 					return
 				}

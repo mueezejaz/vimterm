@@ -56,6 +56,9 @@ type App struct {
 	// clipRead returns the paste text; overridable in tests.
 	clipRead func() (string, error)
 
+	// mouseAnchor is where a mouse drag began (from the preceding click).
+	mouseAnchor selection.Pos
+
 	// Status line colors from config.
 	statusFg emulator.Color
 	statusBg emulator.Color
@@ -288,6 +291,8 @@ func (a *App) loop(ctx context.Context) error {
 			switch e := ev.(type) {
 			case console.KeyEvent:
 				a.handleKey(e.Key)
+			case console.MouseEvent:
+				a.handleMouse(e)
 			case console.ResizeEvent:
 				a.resize(e.Cols, e.Rows)
 			}
