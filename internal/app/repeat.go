@@ -49,6 +49,12 @@ var nonRepeatable = map[keybind.Action]bool{
 	keybind.ActionFindUntilBack: true,
 	keybind.ActionFindNext:      true,
 	keybind.ActionFindPrev:      true,
+	keybind.ActionMoveWord:      true,
+	keybind.ActionMoveWordBack:  true,
+	keybind.ActionMoveWordEnd:   true,
+	keybind.ActionMoveWORD:      true,
+	keybind.ActionMoveWORDBack:  true,
+	keybind.ActionMoveWORDEnd:   true,
 	keybind.ActionQuit:          true,
 }
 

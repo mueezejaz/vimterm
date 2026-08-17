@@ -103,6 +103,12 @@ func defaultNormalBindings() map[string]string {
 		"T":      "find_until_back",
 		";":      "find_next",
 		",":      "find_prev",
+		"w":      "move_word",
+		"b":      "move_word_back",
+		"e":      "move_word_end",
+		"W":      "move_word_upper",
+		"B":      "move_word_back_upper",
+		"E":      "move_word_end_upper",
 		"ctrl+q": "quit",
 	}
 }
@@ -138,6 +144,12 @@ func defaultVisualBindings() map[string]string {
 		"T":      "find_until_back",
 		";":      "find_next",
 		",":      "find_prev",
+		"w":      "move_word",
+		"b":      "move_word_back",
+		"e":      "move_word_end",
+		"W":      "move_word_upper",
+		"B":      "move_word_back_upper",
+		"E":      "move_word_end_upper",
 		"i":      "enter_insert",
 		"esc":    "enter_normal",
 		"ctrl+q": "quit",
@@ -290,6 +302,12 @@ status_bg = ""
 "T" = "find_until_back"
 ";" = "find_next"
 "," = "find_prev"
+"w" = "move_word"
+"b" = "move_word_back"
+"e" = "move_word_end"
+"W" = "move_word_upper"
+"B" = "move_word_back_upper"
+"E" = "move_word_end_upper"
 "ctrl+q" = "quit"
 
 [keybindings.insert]
@@ -319,6 +337,12 @@ status_bg = ""
 "T" = "find_until_back"
 ";" = "find_next"
 "," = "find_prev"
+"w" = "move_word"
+"b" = "move_word_back"
+"e" = "move_word_end"
+"W" = "move_word_upper"
+"B" = "move_word_back_upper"
+"E" = "move_word_end_upper"
 "i" = "enter_insert"
 "esc" = "enter_normal"
 "ctrl+q" = "quit"

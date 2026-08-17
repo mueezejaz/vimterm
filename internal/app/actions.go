@@ -40,6 +40,12 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionFindUntilBack: func() { a.find.begin(-1, true) },
 		keybind.ActionFindNext:      func() { a.findRepeat(1) },
 		keybind.ActionFindPrev:      func() { a.findRepeat(-1) },
+		keybind.ActionMoveWord:      func() { a.wordMotion(1, wordKindWord) },
+		keybind.ActionMoveWordBack:  func() { a.wordMotion(-1, wordKindWord) },
+		keybind.ActionMoveWordEnd:   func() { a.wordEndMotion(wordKindWord) },
+		keybind.ActionMoveWORD:      func() { a.wordMotion(1, wordKindWORD) },
+		keybind.ActionMoveWORDBack:  func() { a.wordMotion(-1, wordKindWORD) },
+		keybind.ActionMoveWORDEnd:   func() { a.wordEndMotion(wordKindWORD) },
 		keybind.ActionQuit:          a.requestQuit,
 	}
 }

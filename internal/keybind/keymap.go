@@ -32,6 +32,12 @@ const (
 	ActionFindUntilBack Action = "find_until_back"
 	ActionFindNext      Action = "find_next"
 	ActionFindPrev      Action = "find_prev"
+	ActionMoveWord      Action = "move_word"
+	ActionMoveWordBack  Action = "move_word_back"
+	ActionMoveWordEnd   Action = "move_word_end"
+	ActionMoveWORD      Action = "move_word_upper"
+	ActionMoveWORDBack  Action = "move_word_back_upper"
+	ActionMoveWORDEnd   Action = "move_word_end_upper"
 	ActionQuit          Action = "quit"
 )
 
@@ -65,6 +71,12 @@ var AllActions = []Action{
 	ActionFindUntilBack,
 	ActionFindNext,
 	ActionFindPrev,
+	ActionMoveWord,
+	ActionMoveWordBack,
+	ActionMoveWordEnd,
+	ActionMoveWORD,
+	ActionMoveWORDBack,
+	ActionMoveWORDEnd,
 	ActionQuit,
 }
 

@@ -22,6 +22,12 @@ var countAware = map[keybind.Action]bool{
 	keybind.ActionFindUntilBack: true,
 	keybind.ActionFindNext:      true,
 	keybind.ActionFindPrev:      true,
+	keybind.ActionMoveWord:      true,
+	keybind.ActionMoveWordBack:  true,
+	keybind.ActionMoveWordEnd:   true,
+	keybind.ActionMoveWORD:      true,
+	keybind.ActionMoveWORDBack:  true,
+	keybind.ActionMoveWORDEnd:   true,
 }
 
 // takeCount returns the count handed off before this action, or 1 when no
