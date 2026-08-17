@@ -1,0 +1,30 @@
+# Others
+ARCHITECTURE.md
+# Binaries
+
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Go workspace / build output
+bin/
+dist/
+out/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

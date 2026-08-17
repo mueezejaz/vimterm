@@ -1,0 +1,76 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestDefault(t *testing.T) {
+	cfg := Default()
+	if cfg.General.Shell != "powershell.exe" {
+		t.Errorf("default shell = %q, want powershell.exe", cfg.General.Shell)
+	}
+	if cfg.General.Scrollback != 10000 {
+		t.Errorf("default scrollback = %d, want 10000", cfg.General.Scrollback)
+	}
+}
+
+func TestLoadMissingKeysFallBackToDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[general]\nshell = \"cmd.exe\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.General.Shell != "cmd.exe" {
+		t.Errorf("shell = %q, want cmd.exe", cfg.General.Shell)
+	}
+	if cfg.General.Scrollback != 10000 {
+		t.Errorf("scrollback = %d, want default 10000", cfg.General.Scrollback)
+	}
+}
+
+func TestLoadInvalidTOML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("this is { not toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error for invalid TOML")
+	}
+}
+
+func TestEnsureDefaultCreatesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vimterm", "config.toml")
+	if err := EnsureDefault(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("default config not created: %v", err)
+	}
+	// Second call must be a no-op.
+	if err := EnsureDefault(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadEmptyShellFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[general]\nshell = \"\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.General.Shell != "powershell.exe" {
+		t.Errorf("shell = %q, want fallback powershell.exe", cfg.General.Shell)
+	}
+}

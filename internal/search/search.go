@@ -1,0 +1,164 @@
+// Package search implements case-insensitive line search over a text buffer
+// (scrollback plus current screen) with match tracking and cell highlighting.
+package search
+
+import (
+	"strings"
+
+	"vimterm/internal/emulator"
+)
+
+// Line returns the runes of one buffer line.
+type Line func(absLine int) []rune
+
+// Search tracks a query and its matches in a fixed snapshot of the buffer.
+// The buffer contents are re-read via Line on every Query change and on
+// Next/Prev, so callers should pass a Line closure bound to live state.
+type Search struct {
+	line    Line
+	query   []rune
+	matches []int
+}
+
+// New creates a Search over the given line provider.
+func New(line Line) *Search {
+	return &Search{line: line}
+}
+
+// Query returns the active query runes.
+func (s *Search) Query() []rune {
+	return s.query
+}
+
+// Clear resets the query and all matches.
+func (s *Search) Clear() {
+	s.query = nil
+	s.matches = nil
+}
+
+// SetQuery replaces the query and recomputes all matches over the buffer.
+func (s *Search) SetQuery(q []rune) {
+	s.query = q
+	s.recompute()
+}
+
+func (s *Search) recompute() {
+	s.matches = nil
+	if len(s.query) == 0 || s.line == nil {
+		return
+	}
+	low := lower(s.query)
+	// A new batch can appear while we scan; clamp per line read.
+	for l := 0; ; l++ {
+		text := lower(s.line(l))
+		if len(text) == 0 {
+			break
+		}
+		if index(text, low) >= 0 {
+			s.matches = append(s.matches, l)
+		}
+	}
+}
+
+// Matches returns the buffer line numbers containing the query, ascending.
+func (s *Search) Matches() []int {
+	return s.matches
+}
+
+// Next returns the first match strictly after from, or false.
+func (s *Search) Next(from int) (int, bool) {
+	for _, m := range s.matches {
+		if m > from {
+			return m, true
+		}
+	}
+	return 0, false
+}
+
+// Prev returns the last match strictly before from, or false.
+func (s *Search) Prev(from int) (int, bool) {
+	for i := len(s.matches) - 1; i >= 0; i-- {
+		if s.matches[i] < from {
+			return s.matches[i], true
+		}
+	}
+	return 0, false
+}
+
+// Highlight marks every occurrence of the query in the given buffer line with
+// the reverse attribute.
+func (s *Search) Highlight(line []emulator.Cell, absLine int) {
+	if len(s.query) == 0 {
+		return
+	}
+	runes := make([]rune, 0, len(line))
+	for _, c := range line {
+		for _, r := range c.Content {
+			runes = append(runes, r)
+		}
+	}
+	low := lower(s.query)
+	for i := 0; ; i++ {
+		idx := indexFrom(lower(runes), low, i)
+		if idx < 0 {
+			return
+		}
+		// Map rune indices back onto cells: cells hold at most one rune each
+		// (continuation cells hold none).
+		runePos := 0
+		for j, c := range line {
+			n := len([]rune(c.Content))
+			if runePos+n > idx && runePos < idx+len(low) {
+				line[j].Reverse = true
+			}
+			runePos += n
+		}
+		i = idx + len(low) - 1
+	}
+}
+
+func lower(r []rune) []rune {
+	out := make([]rune, len(r))
+	for i, x := range r {
+		out[i] = toLower(x)
+	}
+	return out
+}
+
+func toLower(r rune) rune {
+	if r >= 'A' && r <= 'Z' {
+		return r + ('a' - 'A')
+	}
+	return r
+}
+
+// index returns the index of needle in haystack, or -1.
+func index(haystack, needle []rune) int {
+	if len(needle) == 0 {
+		return 0
+	}
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if string(haystack[i:i+len(needle)]) == string(needle) {
+			return i
+		}
+	}
+	return -1
+}
+
+// indexFrom returns the index of needle in haystack at or after from, or -1.
+func indexFrom(haystack, needle []rune, from int) int {
+	rest := haystack[from:]
+	if idx := index(rest, needle); idx >= 0 {
+		return from + idx
+	}
+	return -1
+}
+
+// LineText renders a cell row as plain text, trimming trailing spaces.
+func LineText(cells []emulator.Cell) string {
+	var sb strings.Builder
+	for _, c := range cells {
+		sb.WriteString(c.Content)
+	}
+	return strings.TrimRight(sb.String(), " ")
+}
