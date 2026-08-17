@@ -38,6 +38,9 @@ const (
 	ActionMoveWORD      Action = "move_word_upper"
 	ActionMoveWORDBack  Action = "move_word_back_upper"
 	ActionMoveWORDEnd   Action = "move_word_end_upper"
+	ActionEnterInsertAfter Action = "enter_insert_after"
+	ActionEnterInsertEnd   Action = "enter_insert_end"
+	ActionEnterInsertHome  Action = "enter_insert_home"
 	ActionQuit          Action = "quit"
 )
 
@@ -77,6 +80,9 @@ var AllActions = []Action{
 	ActionMoveWORD,
 	ActionMoveWORDBack,
 	ActionMoveWORDEnd,
+	ActionEnterInsertAfter,
+	ActionEnterInsertEnd,
+	ActionEnterInsertHome,
 	ActionQuit,
 }
 

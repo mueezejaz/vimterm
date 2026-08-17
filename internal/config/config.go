@@ -88,6 +88,9 @@ func defaultNormalBindings() map[string]string {
 		"ctrl+u": "scroll_up",
 		"ctrl+d": "scroll_down",
 		"i":      "enter_insert",
+		"a":      "enter_insert_after",
+		"A":      "enter_insert_end",
+		"I":      "enter_insert_home",
 		"/":      "search_forward",
 		"n":      "search_next",
 		"N":      "search_prev",
@@ -287,6 +290,9 @@ status_bg = ""
 "ctrl+u" = "scroll_up"
 "ctrl+d" = "scroll_down"
 "i" = "enter_insert"
+"a" = "enter_insert_after"
+"A" = "enter_insert_end"
+"I" = "enter_insert_home"
 "/" = "search_forward"
 "n" = "search_next"
 "N" = "search_prev"
