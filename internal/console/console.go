@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"vimterm/internal/emulator"
 	"vimterm/internal/keybind"
 )
 
@@ -55,6 +56,19 @@ type windowBufferSizeRecord struct {
 	size windows.Coord
 }
 
+// screenBufferInfoEx mirrors CONSOLE_SCREEN_BUFFER_INFOEX (96 bytes).
+type screenBufferInfoEx struct {
+	cbSize               uint32
+	dwSize               windows.Coord
+	dwCursorPosition     windows.Coord
+	wAttributes          uint16
+	srWindow             windows.SmallRect
+	dwMaximumWindowSize  windows.Coord
+	wPopupAttributes     uint16
+	bFullscreenSupported uint32
+	colorTable           [16]uint32
+}
+
 const (
 	enableProcessedInput    = 0x0001
 	enableLineInput         = 0x0002
@@ -69,7 +83,8 @@ const (
 )
 
 var (
-	procReadConsoleInputW = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReadConsoleInputW")
+	procReadConsoleInputW      = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReadConsoleInputW")
+	procGetConsoleScreenBufferInfoEx = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleScreenBufferInfoEx")
 )
 
 // Console wraps the Windows console: it puts the host terminal into raw mode,
@@ -165,6 +180,35 @@ func (c *Console) WriteVT(p []byte) (int, error) {
 // Write implements io.Writer, forwarding bytes to the host console.
 func (c *Console) Write(p []byte) (int, error) {
 	return c.WriteVT(p)
+}
+
+// ThemeColors returns the host console's default foreground and background
+// RGB colors, read from the console color table at the default attribute
+// indices. Windows Terminal keeps this table in sync with its active color
+// scheme. ok is false when the info cannot be read (e.g. headless).
+func (c *Console) ThemeColors() (fg, bg emulator.Color, ok bool) {
+	var info screenBufferInfoEx
+	info.cbSize = uint32(unsafe.Sizeof(info))
+	r1, _, _ := procGetConsoleScreenBufferInfoEx.Call(
+		uintptr(c.out),
+		uintptr(unsafe.Pointer(&info)),
+	)
+	if r1 == 0 {
+		return emulator.Color{}, emulator.Color{}, false
+	}
+	fgIdx := info.wAttributes & 0x0f
+	bgIdx := (info.wAttributes >> 4) & 0x0f
+	return colorrefToColor(info.colorTable[fgIdx]),
+		colorrefToColor(info.colorTable[bgIdx]), true
+}
+
+// colorrefToColor converts a COLORREF (0x00bbggrr) into an emulator.Color.
+func colorrefToColor(c uint32) emulator.Color {
+	return emulator.Color{
+		R: uint8(c & 0xff),
+		G: uint8(c >> 8 & 0xff),
+		B: uint8(c >> 16 & 0xff),
+	}
 }
 
 // Close restores the original console modes and stops the input loop.

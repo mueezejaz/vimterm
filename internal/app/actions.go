@@ -5,6 +5,7 @@ import (
 
 	"vimterm/internal/clipboard"
 	"vimterm/internal/console"
+	"vimterm/internal/emulator"
 	"vimterm/internal/keybind"
 	"vimterm/internal/mode"
 	"vimterm/internal/selection"
@@ -328,6 +329,29 @@ func (a *App) moveShellCursorToVirtual() {
 	if _, err := a.sess.Write(cursorMoveSeq(delta)); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 	}
+}
+
+// cursorBlockStyle returns the colors the virtual cursor block should use
+// over the given cell: the cell's rendered colors (Reverse applied, Default
+// resolved to the theme colors) inverted. Inverting the rendered colors
+// instead of just setting Reverse keeps the cursor visible when the cell is
+// already highlighted (search matches and selections are drawn with Reverse).
+// Defaults are resolved before swapping so the default background attribute
+// becomes the default background color even when reverse puts it in the
+// foreground slot.
+func cursorBlockStyle(cell emulator.Cell, themeFg, themeBg emulator.Color) (fg, bg emulator.Color) {
+	fg, bg = cell.Fg, cell.Bg
+	zero := emulator.Color{}
+	if fg == zero || fg.Default {
+		fg = themeFg
+	}
+	if bg == zero || bg.Default {
+		bg = themeBg
+	}
+	if cell.Reverse {
+		fg, bg = bg, fg
+	}
+	return bg, fg
 }
 
 // cursorMoveSeq builds the escape sequences that move a line editor cursor

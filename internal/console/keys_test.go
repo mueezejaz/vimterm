@@ -4,8 +4,28 @@ import (
 	"reflect"
 	"testing"
 
+	"vimterm/internal/emulator"
 	"vimterm/internal/keybind"
 )
+
+func TestColorrefToColor(t *testing.T) {
+	cases := []struct {
+		in   uint32
+		want emulator.Color
+	}{
+		{0x00ffffff, emulator.Color{R: 255, G: 255, B: 255}},
+		{0x00000000, emulator.Color{}},
+		{0x00ff0000, emulator.Color{B: 255}},
+		{0x0000ff00, emulator.Color{G: 255}},
+		{0x000000ff, emulator.Color{R: 255}},
+		{0x00123456, emulator.Color{R: 0x56, G: 0x34, B: 0x12}},
+	}
+	for _, c := range cases {
+		if got := colorrefToColor(c.in); got != c.want {
+			t.Errorf("colorrefToColor(%#x) = %+v, want %+v", c.in, got, c.want)
+		}
+	}
+}
 
 func TestKeyFromRecord(t *testing.T) {
 	tests := []struct {

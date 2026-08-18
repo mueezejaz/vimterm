@@ -63,6 +63,13 @@ type App struct {
 	statusFg emulator.Color
 	statusBg emulator.Color
 
+	// Host console default colors (from the console color table), used to
+	// draw the virtual cursor as a solid block that stays visible on search
+	// highlights and selections. haveTheme is false when unavailable.
+	themeFg   emulator.Color
+	themeBg   emulator.Color
+	haveTheme bool
+
 	// Prompt state (owned by the main loop goroutine).
 	prompt          *prompt
 	search          *search.Search
@@ -136,6 +143,9 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 		screenCols: cols,
 		screenRows: rows,
 		done:       make(chan struct{}),
+	}
+	if fg, bg, ok := con.ThemeColors(); ok {
+		a.themeFg, a.themeBg, a.haveTheme = fg, bg, true
 	}
 	a.search = search.New(a.bufferLine)
 	a.macro = macro.New()
@@ -495,8 +505,17 @@ func (a *App) renderFrame(frame *render.Frame) {
 		top := a.topAbsLine()
 		if a.cur.Line >= top && a.cur.Line <= top+rows-1 {
 			cell := &frame.Cells[a.cur.Line-top][a.cur.Col]
-			cell.Reverse = true
-			cell.Bold = true
+			if a.haveTheme {
+				// A solid block in the cell's inverted rendered colors: on a
+				// highlighted cell the cursor lands on the opposite color
+				// pair of the highlight instead of blending into it.
+				cell.Fg, cell.Bg = cursorBlockStyle(*cell, a.themeFg, a.themeBg)
+				cell.Reverse = false
+				cell.Bold = true
+			} else {
+				cell.Reverse = true
+				cell.Bold = true
+			}
 		}
 	}
 
