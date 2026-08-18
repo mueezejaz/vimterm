@@ -26,14 +26,16 @@ func statusLine(row []emulator.Cell, m mode.Mode, msg, shell string, cx, cy int,
 	for i := range row {
 		row[i] = emulator.Cell{Content: " ", Width: 1, Fg: fg, Bg: bg}
 	}
-	for i, r := range left {
+	leftRunes := []rune(left)
+	for i, r := range leftRunes {
 		if i >= len(row) {
 			break
 		}
 		row[i] = statusCell(r, fg, bg)
 	}
-	rightStart := len(row) - len(right)
-	for i, r := range right {
+	rightRunes := []rune(right)
+	rightStart := len(row) - len(rightRunes)
+	for i, r := range rightRunes {
 		if rightStart+i < 0 {
 			break
 		}

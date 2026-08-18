@@ -59,6 +59,35 @@ func TestStatusLineMessage(t *testing.T) {
 	}
 }
 
+func TestStatusLineUnicodeMessage(t *testing.T) {
+	row := make([]emulator.Cell, 60)
+	msg := "find: no 'é' forward"
+	statusLine(row, mode.ModeNormal, msg, "cmd.exe", 0, 0, defaultStatusFg, defaultStatusBg)
+
+	var sb strings.Builder
+	for _, c := range row {
+		sb.WriteString(c.Content)
+	}
+	text := sb.String()
+
+	left := " NORMAL " + msg
+	right := " cmd.exe  1,1 "
+	if !strings.HasPrefix(text, left) {
+		t.Errorf("unicode message misaligned, want prefix %q, got %q", left, text)
+	}
+	if !strings.HasSuffix(text, right) {
+		t.Errorf("unicode message shifted right side, want suffix %q, got %q", right, text)
+	}
+	for i, r := range []rune(left) {
+		if i >= len(row) {
+			break
+		}
+		if row[i].Content != string(r) {
+			t.Errorf("cell %d = %q, want %q", i, row[i].Content, string(r))
+		}
+	}
+}
+
 func TestTerminalRows(t *testing.T) {
 	cases := map[int]int{0: 1, 1: 1, 2: 1, 24: 23, 30: 29}
 	for in, want := range cases {
