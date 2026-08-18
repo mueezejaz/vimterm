@@ -96,7 +96,11 @@ func parseChunk(chunk string, mods Mods, leader Key) ([]Key, error) {
 	if code, ok := specialNames[lower]; ok {
 		return []Key{{Code: code, Mods: mods}}, nil
 	}
-	if len(chunk) >= 2 && (chunk[0] == 'f' || chunk[0] == 'F') {
+	// A chunk is only treated as a function key when it carries an
+	// explicit modifier ("ctrl+f5"). A bare multi-rune chunk like "f5"
+	// is unambiguously a sequence of literal keys (f then 5); otherwise
+	// a user could never express that sequence.
+	if mods != 0 && len(chunk) >= 2 && (chunk[0] == 'f' || chunk[0] == 'F') {
 		if n, err := strconv.Atoi(chunk[1:]); err == nil && n >= 1 && n <= 24 {
 			return []Key{{Code: CodeF1 + Code(n-1), Mods: mods}}, nil
 		}
