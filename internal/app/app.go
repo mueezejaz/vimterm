@@ -641,13 +641,13 @@ func (a *App) jumpToFirstMatch() {
 	}
 	top := a.topAbsLine()
 	if m, ok := a.search.Next(top - 1); ok {
-		a.jumpToAbsLine(m)
-		a.moveCursorTo(m)
+		a.jumpToAbsLine(m.Line)
+		a.moveCursorTo(m.Line, m.Col)
 		return
 	}
 	if m, ok := a.search.Next(-1); ok {
-		a.jumpToAbsLine(m)
-		a.moveCursorTo(m)
+		a.jumpToAbsLine(m.Line)
+		a.moveCursorTo(m.Line, m.Col)
 	}
 }
 
@@ -660,7 +660,7 @@ func (a *App) nextSearch(step int) {
 	}
 	a.search.SetQuery(a.search.Query())
 	top := a.topAbsLine()
-	var m int
+	var m search.Match
 	var ok bool
 	if step > 0 {
 		if m, ok = a.search.Next(top); !ok {
@@ -677,14 +677,14 @@ func (a *App) nextSearch(step int) {
 			}
 		}
 	}
-	a.jumpToAbsLine(m)
-	a.moveCursorTo(m)
+	a.jumpToAbsLine(m.Line)
+	a.moveCursorTo(m.Line, m.Col)
 }
 
-// moveCursorTo places the virtual cursor at the start of the given absolute
-// line, keeping it valid.
-func (a *App) moveCursorTo(absLine int) {
-	a.cur = selection.Pos{Line: absLine, Col: 0}
+// moveCursorTo places the virtual cursor at the given column of the given
+// absolute line, keeping it valid.
+func (a *App) moveCursorTo(absLine, col int) {
+	a.cur = selection.Pos{Line: absLine, Col: col}
 	a.curValid = true
 	a.clampCursor()
 	a.dirty.Store(true)

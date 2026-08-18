@@ -1,8 +1,38 @@
 package app
 
 import (
+	"strings"
 	"testing"
+
+	"vimterm/internal/keybind"
 )
+
+// TestSearchCursorLandsOnMatch verifies that after a / search the virtual
+// cursor sits at the start of the matched word, not at column 0 of the line.
+func TestSearchCursorLandsOnMatch(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("alpha beta gamma\r\n")
+	sb.WriteString("delta beta\r\n")
+	sb.WriteString("epsilon\r\n")
+	a := findApp(t, sb.String())
+
+	press(t, a, keybind.NewRune('/', 0))
+	for _, r := range "beta" {
+		press(t, a, keybind.NewRune(r, 0))
+	}
+	if a.prompt == nil {
+		t.Fatal("search prompt did not open")
+	}
+	if a.cur.Line != 0 || a.cur.Col != 6 {
+		t.Fatalf("cursor = %d,%d want 0,6 (start of first beta)", a.cur.Line, a.cur.Col)
+	}
+
+	press(t, a, keybind.NewCode(keybind.CodeEnter, 0))
+	press(t, a, keybind.NewRune('n', 0))
+	if a.cur.Line != 1 || a.cur.Col != 6 {
+		t.Fatalf("after n cursor = %d,%d want 1,6", a.cur.Line, a.cur.Col)
+	}
+}
 
 func TestPromptInsertBackspace(t *testing.T) {
 	p := newPrompt(promptSearch)

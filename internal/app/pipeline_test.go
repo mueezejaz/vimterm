@@ -206,16 +206,16 @@ func TestSearchWithRealShell(t *testing.T) {
 	// Highlight a known matching line and verify the cells are marked.
 	if m, ok := s.Next(-1); ok {
 		row := make([]emulator.Cell, cols)
-		if m < emu.ScrollbackLen() {
+		if m.Line < emu.ScrollbackLen() {
 			for x := 0; x < cols; x++ {
-				row[x] = emu.ScrollbackCell(x, m)
+				row[x] = emu.ScrollbackCell(x, m.Line)
 			}
 		} else {
 			for x := 0; x < cols; x++ {
-				row[x] = emu.Cell(x, m-emu.ScrollbackLen())
+				row[x] = emu.Cell(x, m.Line-emu.ScrollbackLen())
 			}
 		}
-		s.Highlight(row, m)
+		s.Highlight(row, m.Line)
 		marked := 0
 		for _, c := range row {
 			if c.Reverse {

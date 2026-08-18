@@ -19,7 +19,7 @@ func TestSetQueryAndMatches(t *testing.T) {
 	s := New(fakeLine([]string{"Hello world", "world cup", "no match", "WORLD end"}))
 	s.SetQuery([]rune("world"))
 	got := s.Matches()
-	want := []int{0, 1, 3}
+	want := []Match{{0, 6}, {1, 0}, {3, 0}}
 	if len(got) != len(want) {
 		t.Fatalf("matches = %v, want %v", got, want)
 	}
@@ -53,20 +53,46 @@ func TestNoMatch(t *testing.T) {
 func TestNextPrev(t *testing.T) {
 	s := New(fakeLine([]string{"one", "two", "three", "two", "five"}))
 	s.SetQuery([]rune("two"))
-	if m, ok := s.Next(-1); !ok || m != 1 {
-		t.Fatalf("Next(-1) = %d,%v want 1,true", m, ok)
+	if m, ok := s.Next(-1); !ok || m != (Match{1, 0}) {
+		t.Fatalf("Next(-1) = %+v,%v want 1,0 true", m, ok)
 	}
-	if m, ok := s.Next(1); !ok || m != 3 {
-		t.Fatalf("Next(1) = %d,%v want 3,true", m, ok)
+	if m, ok := s.Next(1); !ok || m != (Match{3, 0}) {
+		t.Fatalf("Next(1) = %+v,%v want 3,0 true", m, ok)
 	}
 	if _, ok := s.Next(3); ok {
 		t.Fatal("Next(3) must be false")
 	}
-	if m, ok := s.Prev(3); !ok || m != 1 {
-		t.Fatalf("Prev(3) = %d,%v want 1,true", m, ok)
+	if m, ok := s.Prev(3); !ok || m != (Match{1, 0}) {
+		t.Fatalf("Prev(3) = %+v,%v want 1,0 true", m, ok)
 	}
 	if _, ok := s.Prev(1); ok {
 		t.Fatal("Prev(1) must be false")
+	}
+}
+
+func TestMatchColumn(t *testing.T) {
+	s := New(fakeLine([]string{"  hello there", "say hello", "no match"}))
+	s.SetQuery([]rune("hello"))
+	got := s.Matches()
+	want := []Match{{0, 2}, {1, 4}}
+	if len(got) != len(want) {
+		t.Fatalf("matches = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("matches = %v, want %v", got, want)
+		}
+	}
+	// Case-insensitive matching keeps the same column.
+	s.SetQuery([]rune("HELLO"))
+	got = s.Matches()
+	if len(got) != len(want) {
+		t.Fatalf("upper-case matches = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("upper-case matches = %v, want %v", got, want)
+		}
 	}
 }
 

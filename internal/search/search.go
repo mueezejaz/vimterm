@@ -11,13 +11,20 @@ import (
 // Line returns the runes of one buffer line.
 type Line func(absLine int) []rune
 
+// Match is one occurrence of the query: the buffer line and the cell column
+// where the first occurrence on that line starts.
+type Match struct {
+	Line int
+	Col  int
+}
+
 // Search tracks a query and its matches in a fixed snapshot of the buffer.
 // The buffer contents are re-read via Line on every Query change and on
 // Next/Prev, so callers should pass a Line closure bound to live state.
 type Search struct {
 	line    Line
 	query   []rune
-	matches []int
+	matches []Match
 }
 
 // New creates a Search over the given line provider.
@@ -54,35 +61,37 @@ func (s *Search) recompute() {
 		if len(text) == 0 {
 			break
 		}
-		if index(text, low) >= 0 {
-			s.matches = append(s.matches, l)
+		if idx := index(text, low); idx >= 0 {
+			// The rune index maps 1:1 to cell columns (each cell holds at
+			// most one rune; continuation cells hold none).
+			s.matches = append(s.matches, Match{Line: l, Col: idx})
 		}
 	}
 }
 
-// Matches returns the buffer line numbers containing the query, ascending.
-func (s *Search) Matches() []int {
+// Matches returns the query occurrences, ascending by line.
+func (s *Search) Matches() []Match {
 	return s.matches
 }
 
 // Next returns the first match strictly after from, or false.
-func (s *Search) Next(from int) (int, bool) {
+func (s *Search) Next(from int) (Match, bool) {
 	for _, m := range s.matches {
-		if m > from {
+		if m.Line > from {
 			return m, true
 		}
 	}
-	return 0, false
+	return Match{}, false
 }
 
 // Prev returns the last match strictly before from, or false.
-func (s *Search) Prev(from int) (int, bool) {
+func (s *Search) Prev(from int) (Match, bool) {
 	for i := len(s.matches) - 1; i >= 0; i-- {
-		if s.matches[i] < from {
+		if s.matches[i].Line < from {
 			return s.matches[i], true
 		}
 	}
-	return 0, false
+	return Match{}, false
 }
 
 // Highlight marks every occurrence of the query in the given buffer line with
