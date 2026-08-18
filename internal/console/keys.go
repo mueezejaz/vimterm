@@ -146,7 +146,10 @@ func KeyToBytes(k keybind.Key) []byte {
 	case keybind.CodeEnter:
 		return []byte("\r")
 	case keybind.CodeBackspace:
-		return []byte{0x08}
+		// DEL (0x7F), not BS (0x08): ConPTY delivers 0x08 to the child as
+		// Ctrl+Backspace (delete word), whereas 0x7F maps to a plain
+		// backspace that deletes one character.
+		return []byte{0x7F}
 	case keybind.CodeTab:
 		return []byte("\t")
 	case keybind.CodeEsc:

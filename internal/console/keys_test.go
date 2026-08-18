@@ -56,7 +56,7 @@ func TestKeyToBytes(t *testing.T) {
 		{"ctrl+a", keybind.NewRune('a', keybind.ModCtrl), []byte{0x01}},
 		{"ctrl+space", keybind.NewRune(' ', keybind.ModCtrl), []byte{0x00}},
 		{"enter", keybind.NewCode(keybind.CodeEnter, 0), []byte("\r")},
-		{"backspace", keybind.NewCode(keybind.CodeBackspace, 0), []byte{0x08}},
+		{"backspace", keybind.NewCode(keybind.CodeBackspace, 0), []byte{0x7F}},
 		{"esc", keybind.NewCode(keybind.CodeEsc, 0), []byte{0x1B}},
 		{"up", keybind.NewCode(keybind.CodeUp, 0), []byte("\x1b[A")},
 		{"left", keybind.NewCode(keybind.CodeLeft, 0), []byte("\x1b[D")},
