@@ -30,6 +30,9 @@ func TestParseSequence(t *testing.T) {
 		{"leader alone", "leader", []Key{leader}, false},
 		{"leader combo", "leader+t", []Key{leader, NewRune('t', 0)}, false},
 		{"shift punct", "!", []Key{NewRune('!', ModShift)}, false},
+		{"mixed-case sequence", "aB3", []Key{NewRune('a', 0), NewRune('B', ModShift), NewRune('3', 0)}, false},
+		{"shift punct does not leak", "a!b", []Key{NewRune('a', 0), NewRune('!', ModShift), NewRune('b', 0)}, false},
+		{"shift does not leak after upper", "Ga", []Key{NewRune('G', ModShift), NewRune('a', 0)}, false},
 		{"empty", "", nil, true},
 		{"f99 out of range", "f99", []Key{NewRune('f', 0), NewRune('9', 0), NewRune('9', 0)}, false},
 	}
