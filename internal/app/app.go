@@ -80,6 +80,12 @@ type App struct {
 	curValid bool
 	sel      selection.Selection
 
+	// Virtual cursor blinking: curBlink is the visible phase; lastInput is
+	// the time of the last key/mouse/resize event, resetting the cursor to
+	// solid so it does not blink while the user is active.
+	curBlink  bool
+	lastInput time.Time
+
 	// gen guards the session reader/waiter goroutines across restarts: only
 	// the generation matching the current session may close a.done.
 	gen atomic.Int64
@@ -143,6 +149,8 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 		screenCols: cols,
 		screenRows: rows,
 		done:       make(chan struct{}),
+		curBlink:   true,
+		lastInput:  time.Now(),
 	}
 	if fg, bg, ok := con.ThemeColors(); ok {
 		a.themeFg, a.themeBg, a.haveTheme = fg, bg, true
@@ -298,6 +306,8 @@ func (a *App) loop(ctx context.Context) error {
 	for {
 		select {
 		case ev := <-a.con.Events():
+			a.lastInput = time.Now()
+			a.curBlink = true
 			switch e := ev.(type) {
 			case console.KeyEvent:
 				a.handleKey(e.Key)
@@ -321,6 +331,12 @@ func (a *App) loop(ctx context.Context) error {
 			return nil
 
 		case <-tick:
+			// Cursor blink: once idle, alternate the virtual cursor's
+			// visibility on the blink cadence. Any input resets it to solid.
+			if want := cursorBlinkPhase(time.Now(), a.lastInput); want != a.curBlink {
+				a.curBlink = want
+				a.dirty.Store(true)
+			}
 			if !a.dirty.Swap(false) {
 				continue
 			}
@@ -497,24 +513,27 @@ func (a *App) renderFrame(frame *render.Frame) {
 
 	// Virtual cursor: marks the position in normal and visual modes. It is
 	// materialized from the shell cursor (or viewport top when scrolled) on
-	// first use, so a cursor is always visible in normal mode.
+	// first use, so a cursor is always visible in normal mode, and it blinks
+	// once the user goes idle.
 	if !a.mods.Is(mode.ModeInsert) {
 		if !a.curValid {
 			a.syncCursor()
 		}
-		top := a.topAbsLine()
-		if a.cur.Line >= top && a.cur.Line <= top+rows-1 {
-			cell := &frame.Cells[a.cur.Line-top][a.cur.Col]
-			if a.haveTheme {
-				// A solid block in the cell's inverted rendered colors: on a
-				// highlighted cell the cursor lands on the opposite color
-				// pair of the highlight instead of blending into it.
-				cell.Fg, cell.Bg = cursorBlockStyle(*cell, a.themeFg, a.themeBg)
-				cell.Reverse = false
-				cell.Bold = true
-			} else {
-				cell.Reverse = true
-				cell.Bold = true
+		if a.curBlink {
+			top := a.topAbsLine()
+			if a.cur.Line >= top && a.cur.Line <= top+rows-1 {
+				cell := &frame.Cells[a.cur.Line-top][a.cur.Col]
+				if a.haveTheme {
+					// A solid block in the cell's inverted rendered colors: on a
+					// highlighted cell the cursor lands on the opposite color
+					// pair of the highlight instead of blending into it.
+					cell.Fg, cell.Bg = cursorBlockStyle(*cell, a.themeFg, a.themeBg)
+					cell.Reverse = false
+					cell.Bold = true
+				} else {
+					cell.Reverse = true
+					cell.Bold = true
+				}
 			}
 		}
 	}
