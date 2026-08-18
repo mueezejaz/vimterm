@@ -101,6 +101,7 @@ type App struct {
 	screenCleared bool
 	screenCols    int
 	screenRows    int
+	r             *render.Renderer
 
 	err atomic.Value
 }
@@ -151,6 +152,7 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 		done:       make(chan struct{}),
 		curBlink:   true,
 		lastInput:  time.Now(),
+		r:          render.New(),
 	}
 	if fg, bg, ok := con.ThemeColors(); ok {
 		a.themeFg, a.themeBg, a.haveTheme = fg, bg, true
@@ -547,7 +549,7 @@ func (a *App) renderFrame(frame *render.Frame) {
 	}
 
 	statusLine(frame.Cells[frame.Rows-1], a.mods.Current(), a.statusText(), a.sess.Name(), cx, cy, a.statusFg, a.statusBg)
-	render.Draw(a.con, frame)
+	a.r.Draw(a.con, frame)
 }
 
 func (a *App) resize(cols, rows int) {

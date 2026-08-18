@@ -101,3 +101,96 @@ func TestItoa(t *testing.T) {
 		}
 	}
 }
+
+func TestRendererIncremental(t *testing.T) {
+	r := New()
+	f := NewFrame(8, 2)
+	f.Cells[0][0] = emulator.Cell{Content: "a", Width: 1}
+	f.Cells[1][0] = emulator.Cell{Content: "b", Width: 1}
+
+	var sb strings.Builder
+	r.Draw(&sb, f)
+
+	sb.Reset()
+	f.Cells[1][4] = emulator.Cell{Content: "x", Width: 1}
+	r.Draw(&sb, f)
+	out := sb.String()
+
+	if !strings.Contains(out, "\x1b[2;5H") {
+		t.Errorf("changed row must be positioned at its first changed cell: %q", out)
+	}
+	if !strings.Contains(out, "x") {
+		t.Errorf("changed content missing: %q", out)
+	}
+	if strings.Contains(out, "a") {
+		t.Errorf("unchanged row must not be re-emitted: %q", out)
+	}
+}
+
+func TestRendererSkipsIdenticalFrame(t *testing.T) {
+	r := New()
+	f := NewFrame(8, 2)
+	f.Cells[0][0] = emulator.Cell{Content: "a", Width: 1}
+	f.Cells[1][0] = emulator.Cell{Content: "b", Width: 1}
+
+	var sb strings.Builder
+	r.Draw(&sb, f)
+
+	sb.Reset()
+	r.Draw(&sb, f)
+	out := sb.String()
+
+	if strings.Contains(out, "a") || strings.Contains(out, "b") {
+		t.Errorf("identical frame must not re-emit rows: %q", out)
+	}
+	if !strings.Contains(out, "\x1b[?25l") {
+		t.Error("cursor must still be hidden")
+	}
+	if !strings.Contains(out, "\x1b[?25h") {
+		t.Error("cursor must still be shown")
+	}
+}
+
+func TestRendererErasesRemovedTail(t *testing.T) {
+	r := New()
+	f := NewFrame(8, 1)
+	for x, ch := range []string{"l", "o", "n", "g", "t", "e", "x", "t"} {
+		f.Cells[0][x] = emulator.Cell{Content: ch, Width: 1}
+	}
+
+	var sb strings.Builder
+	r.Draw(&sb, f)
+
+	sb.Reset()
+	f.Cells[0] = make([]emulator.Cell, 8)
+	f.Cells[0][0] = emulator.Cell{Content: "x", Width: 1}
+	r.Draw(&sb, f)
+	out := sb.String()
+
+	if !strings.Contains(out, "\x1b[K") {
+		t.Errorf("removed content must be erased: %q", out)
+	}
+}
+
+func TestRendererFullRedrawOnResize(t *testing.T) {
+	r := New()
+	f := NewFrame(8, 1)
+	f.Cells[0][0] = emulator.Cell{Content: "a", Width: 1}
+
+	var sb strings.Builder
+	r.Draw(&sb, f)
+
+	f = NewFrame(8, 2)
+	f.Cells[0][0] = emulator.Cell{Content: "a", Width: 1}
+	f.Cells[1][0] = emulator.Cell{Content: "b", Width: 1}
+	sb.Reset()
+	r.Draw(&sb, f)
+	out := sb.String()
+
+	if !strings.Contains(out, "\x1b[2;1H") {
+		t.Errorf("new row must be drawn after a resize: %q", out)
+	}
+	if !strings.Contains(out, "b") {
+		t.Errorf("new row content missing: %q", out)
+	}
+}

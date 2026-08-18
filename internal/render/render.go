@@ -40,55 +40,54 @@ const (
 // redraw of the grid: the cursor is hidden first, each row is written with
 // cursor positioning, and the cursor is placed at (CursorX, CursorY).
 func Draw(w io.Writer, f *Frame) {
+	New().Draw(w, f)
+}
+
+// Renderer draws frames incrementally: rows unchanged since the previous
+// draw are not re-emitted, so a full-screen application (nvim etc.) only
+// pays for the cells it actually changes. A fresh Renderer (or one that
+// sees different dimensions) does a full redraw.
+type Renderer struct {
+	prev    [][]emulator.Cell
+	prevCX  int
+	prevCY  int
+	prevVis bool
+}
+
+// New returns a Renderer that has not drawn anything yet.
+func New() *Renderer {
+	return &Renderer{prevCX: -1, prevCY: -1}
+}
+
+// Draw writes the changed rows of f to w. The cursor is hidden first, then
+// only rows that differ from the previous frame are emitted (positioned at
+// their first changed cell), and the cursor is placed at (CursorX, CursorY)
+// when visible.
+func (r *Renderer) Draw(w io.Writer, f *Frame) {
+	if r.prev != nil && (len(r.prev) != f.Rows || (f.Rows > 0 && len(r.prev[0]) != f.Cols)) {
+		// The grid changed shape; everything must be redrawn.
+		r.prev = nil
+	}
+
 	var sb strings.Builder
 	sb.Grow(f.Cols*f.Rows + f.Rows*8 + 32)
-
 	sb.WriteString(escHideCursor)
 
 	for y := 0; y < f.Rows; y++ {
-		sb.WriteString("\x1b[")
-		sb.WriteString(itoa(y + 1))
-		sb.WriteString(";1H")
-
 		row := f.Cells[y]
-		var prevStyle style
-		styleActive := false
-		lastNonEmpty := -1
-		for x := 0; x < f.Cols; x++ {
-			c := row[x]
-			if significant(c) {
-				lastNonEmpty = x
-			}
+		var old []emulator.Cell
+		oldDrawn := r.prev != nil
+		if oldDrawn {
+			old = r.prev[y]
 		}
-
-		for x := 0; x <= lastNonEmpty; x++ {
-			c := row[x]
-			if c.Width == 0 {
-				// Placeholder cell of a wide character; the glyph was already
-				// written by the preceding cell.
+		from := 0
+		if oldDrawn {
+			from = firstDiff(row, old)
+			if from < 0 {
 				continue
 			}
-			st := styleOf(c)
-			if !styleActive || st != prevStyle {
-				sb.WriteString(escReset)
-				writeStyle(&sb, st)
-				prevStyle = st
-				styleActive = true
-			}
-			if c.Content == "" {
-				sb.WriteByte(' ')
-			} else {
-				sb.WriteString(c.Content)
-			}
 		}
-
-		if styleActive {
-			sb.WriteString(escReset)
-			styleActive = false
-		}
-		if lastNonEmpty < f.Cols-1 {
-			sb.WriteString(escEraseLine)
-		}
+		drawRow(&sb, row, old, oldDrawn, y, from, f.Cols)
 	}
 
 	if f.CursorVisible {
@@ -115,6 +114,88 @@ func Draw(w io.Writer, f *Frame) {
 	}
 
 	_, _ = io.WriteString(w, sb.String())
+
+	r.prevCX, r.prevCY, r.prevVis = f.CursorX, f.CursorY, f.CursorVisible
+	if r.prev == nil || len(r.prev) != f.Rows || len(r.prev[0]) != f.Cols {
+		prev := make([][]emulator.Cell, f.Rows)
+		for y := range prev {
+			prev[y] = make([]emulator.Cell, f.Cols)
+		}
+		r.prev = prev
+	}
+	for y := range f.Cells {
+		copy(r.prev[y], f.Cells[y])
+	}
+}
+
+// drawRow emits one row starting at cell from: position the cursor, write the
+// styled cells from `from` through the last significant cell, and erase the
+// tail when it previously held content that is gone now.
+func drawRow(sb *strings.Builder, row, old []emulator.Cell, oldDrawn bool, y, from, cols int) {
+	lastNonEmpty := -1
+	for x := from; x < cols; x++ {
+		if significant(row[x]) {
+			lastNonEmpty = x
+		}
+	}
+
+	sb.WriteString("\x1b[")
+	sb.WriteString(itoa(y + 1))
+	sb.WriteByte(';')
+	sb.WriteString(itoa(from + 1))
+	sb.WriteByte('H')
+
+	var prevStyle style
+	styleActive := false
+	for x := from; x <= lastNonEmpty; x++ {
+		c := row[x]
+		if c.Width == 0 {
+			// Placeholder cell of a wide character; the glyph was already
+			// written by the preceding cell.
+			continue
+		}
+		st := styleOf(c)
+		if !styleActive || st != prevStyle {
+			sb.WriteString(escReset)
+			writeStyle(sb, st)
+			prevStyle = st
+			styleActive = true
+		}
+		if c.Content == "" {
+			sb.WriteByte(' ')
+		} else {
+			sb.WriteString(c.Content)
+		}
+	}
+
+	if styleActive {
+		sb.WriteString(escReset)
+	}
+	if lastNonEmpty < cols-1 && (!oldDrawn || oldTailSignificant(old, lastNonEmpty)) {
+		sb.WriteString(escEraseLine)
+	}
+}
+
+// firstDiff returns the first column where row and old differ, or -1 when
+// the rows are identical.
+func firstDiff(row, old []emulator.Cell) int {
+	for x := range row {
+		if row[x] != old[x] {
+			return x
+		}
+	}
+	return -1
+}
+
+// oldTailSignificant reports whether the previously drawn row had any
+// significant cell at or beyond from, so stale content would need erasing.
+func oldTailSignificant(old []emulator.Cell, from int) bool {
+	for x := from + 1; x < len(old); x++ {
+		if significant(old[x]) {
+			return true
+		}
+	}
+	return false
 }
 
 type style struct {
