@@ -204,7 +204,7 @@ func TestSearchWithRealShell(t *testing.T) {
 	}
 
 	// Highlight a known matching line and verify the cells are marked.
-	if m, ok := s.Next(-1); ok {
+	if m, ok := s.Next(-1, -1); ok {
 		row := make([]emulator.Cell, cols)
 		if m.Line < emu.ScrollbackLen() {
 			for x := 0; x < cols; x++ {

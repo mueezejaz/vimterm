@@ -12,7 +12,7 @@ import (
 type Line func(absLine int) []rune
 
 // Match is one occurrence of the query: the buffer line and the cell column
-// where the first occurrence on that line starts.
+// where the occurrence starts.
 type Match struct {
 	Line int
 	Col  int
@@ -61,34 +61,44 @@ func (s *Search) recompute() {
 		if len(text) == 0 {
 			break
 		}
-		if idx := index(text, low); idx >= 0 {
+		// Collect every occurrence, not just the first: navigation must
+		// reach same-line duplicates that Highlight shows.
+		for from := 0; ; {
+			idx := indexFrom(text, low, from)
+			if idx < 0 {
+				break
+			}
 			// The rune index maps 1:1 to cell columns (each cell holds at
 			// most one rune; continuation cells hold none).
 			s.matches = append(s.matches, Match{Line: l, Col: idx})
+			from = idx + len(low)
 		}
 	}
 }
 
-// Matches returns the query occurrences, ascending by line.
+// Matches returns the query occurrences, ascending by position.
 func (s *Search) Matches() []Match {
 	return s.matches
 }
 
-// Next returns the first match strictly after from, or false.
-func (s *Search) Next(from int) (Match, bool) {
+// Next returns the first match strictly after (fromLine, fromCol), or false.
+// A fromCol of -1 means "before any column", so Next(l, -1) returns the first
+// match at or after line l.
+func (s *Search) Next(fromLine, fromCol int) (Match, bool) {
 	for _, m := range s.matches {
-		if m.Line > from {
+		if m.Line > fromLine || (m.Line == fromLine && m.Col > fromCol) {
 			return m, true
 		}
 	}
 	return Match{}, false
 }
 
-// Prev returns the last match strictly before from, or false.
-func (s *Search) Prev(from int) (Match, bool) {
+// Prev returns the last match strictly before (fromLine, fromCol), or false.
+func (s *Search) Prev(fromLine, fromCol int) (Match, bool) {
 	for i := len(s.matches) - 1; i >= 0; i-- {
-		if s.matches[i].Line < from {
-			return s.matches[i], true
+		m := s.matches[i]
+		if m.Line < fromLine || (m.Line == fromLine && m.Col < fromCol) {
+			return m, true
 		}
 	}
 	return Match{}, false

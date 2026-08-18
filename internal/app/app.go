@@ -659,38 +659,41 @@ func (a *App) jumpToFirstMatch() {
 		return
 	}
 	top := a.topAbsLine()
-	if m, ok := a.search.Next(top - 1); ok {
+	if m, ok := a.search.Next(top, -1); ok {
 		a.jumpToAbsLine(m.Line)
 		a.moveCursorTo(m.Line, m.Col)
 		return
 	}
-	if m, ok := a.search.Next(-1); ok {
+	if m, ok := a.search.Next(-1, -1); ok {
 		a.jumpToAbsLine(m.Line)
 		a.moveCursorTo(m.Line, m.Col)
 	}
 }
 
 // nextSearch jumps to the next (step 1) or previous (step -1) match of the
-// last committed search.
+// last committed search, from the virtual cursor position (wrapping around
+// the buffer ends).
 func (a *App) nextSearch(step int) {
 	if len(a.search.Query()) == 0 {
 		a.setStatusMsg("no previous search")
 		return
 	}
+	if !a.curValid {
+		a.syncCursor()
+	}
 	a.search.SetQuery(a.search.Query())
-	top := a.topAbsLine()
 	var m search.Match
 	var ok bool
 	if step > 0 {
-		if m, ok = a.search.Next(top); !ok {
-			if m, ok = a.search.Next(-1); !ok {
+		if m, ok = a.search.Next(a.cur.Line, a.cur.Col); !ok {
+			if m, ok = a.search.Next(-1, -1); !ok {
 				a.setStatusMsg("no match")
 				return
 			}
 		}
 	} else {
-		if m, ok = a.search.Prev(top); !ok {
-			if m, ok = a.search.Prev(a.emu.ScrollbackLen() + a.emu.Height()); !ok {
+		if m, ok = a.search.Prev(a.cur.Line, a.cur.Col); !ok {
+			if m, ok = a.search.Prev(a.emu.ScrollbackLen()+a.emu.Height(), 1<<30); !ok {
 				a.setStatusMsg("no match")
 				return
 			}

@@ -30,6 +30,21 @@ func TestSetQueryAndMatches(t *testing.T) {
 	}
 }
 
+func TestMultipleOccurrencesPerLine(t *testing.T) {
+	s := New(fakeLine([]string{"the cat and the dog", "just the one"}))
+	s.SetQuery([]rune("the"))
+	got := s.Matches()
+	want := []Match{{0, 0}, {0, 12}, {1, 5}}
+	if len(got) != len(want) {
+		t.Fatalf("matches = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("matches = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestEmptyQuery(t *testing.T) {
 	s := New(fakeLine([]string{"aaa", "bbb"}))
 	s.SetQuery(nil)
@@ -53,20 +68,49 @@ func TestNoMatch(t *testing.T) {
 func TestNextPrev(t *testing.T) {
 	s := New(fakeLine([]string{"one", "two", "three", "two", "five"}))
 	s.SetQuery([]rune("two"))
-	if m, ok := s.Next(-1); !ok || m != (Match{1, 0}) {
-		t.Fatalf("Next(-1) = %+v,%v want 1,0 true", m, ok)
+	if m, ok := s.Next(-1, -1); !ok || m != (Match{1, 0}) {
+		t.Fatalf("Next(-1,-1) = %+v,%v want 1,0 true", m, ok)
 	}
-	if m, ok := s.Next(1); !ok || m != (Match{3, 0}) {
-		t.Fatalf("Next(1) = %+v,%v want 3,0 true", m, ok)
+	if m, ok := s.Next(1, 0); !ok || m != (Match{3, 0}) {
+		t.Fatalf("Next(1,0) = %+v,%v want 3,0 true", m, ok)
 	}
-	if _, ok := s.Next(3); ok {
-		t.Fatal("Next(3) must be false")
+	if _, ok := s.Next(3, 0); ok {
+		t.Fatal("Next(3,0) must be false")
 	}
-	if m, ok := s.Prev(3); !ok || m != (Match{1, 0}) {
-		t.Fatalf("Prev(3) = %+v,%v want 1,0 true", m, ok)
+	if m, ok := s.Prev(3, 0); !ok || m != (Match{1, 0}) {
+		t.Fatalf("Prev(3,0) = %+v,%v want 1,0 true", m, ok)
 	}
-	if _, ok := s.Prev(1); ok {
-		t.Fatal("Prev(1) must be false")
+	if _, ok := s.Prev(1, 0); ok {
+		t.Fatal("Prev(1,0) must be false")
+	}
+}
+
+func TestNextPrevSameLine(t *testing.T) {
+	s := New(fakeLine([]string{"cat cat cat", "cat"}))
+	s.SetQuery([]rune("cat"))
+	// Next steps through same-line duplicates before the next line.
+	want := []Match{{0, 0}, {0, 4}, {0, 8}, {1, 0}}
+	for i, w := range want {
+		fromL, fromC := -1, -1
+		if i > 0 {
+			fromL, fromC = want[i-1].Line, want[i-1].Col
+		}
+		if m, ok := s.Next(fromL, fromC); !ok || m != w {
+			t.Fatalf("Next(%d,%d) = %+v,%v want %+v true", fromL, fromC, m, ok, w)
+		}
+	}
+	if _, ok := s.Next(1, 0); ok {
+		t.Fatal("Next(1,0) must be false")
+	}
+	// Prev steps backwards through same-line duplicates.
+	for i := len(want) - 1; i >= 1; i-- {
+		w := want[i-1]
+		if m, ok := s.Prev(want[i].Line, want[i].Col); !ok || m != w {
+			t.Fatalf("Prev(%d,%d) = %+v,%v want %+v true", want[i].Line, want[i].Col, m, ok, w)
+		}
+	}
+	if _, ok := s.Prev(0, 0); ok {
+		t.Fatal("Prev(0,0) must be false")
 	}
 }
 
