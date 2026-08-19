@@ -410,6 +410,7 @@ func (a *App) yank() {
 
 // openCommand starts a colon-command prompt.
 func (a *App) openCommand() {
+	a.preSearchOffset = a.vp.Offset()
 	a.prompt = newPrompt(promptCommand)
 	a.dirty.Store(true)
 }
