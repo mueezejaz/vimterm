@@ -127,11 +127,11 @@ func (a *App) propagateDelete(segs []delSeg) {
 	}
 	// The local buffer shifts left as cells are removed, so the deleted
 	// range in shell coordinates is contiguous: it starts at the first
-	// segment's start and spans every cell that was removed.
+	// segment's start and spans every cell that was removed. The shell
+	// cursor may sit left of the range's end (arrow keys in insert mode
+	// move the shell-side cursor), in which case cursorMoveSeq emits right
+	// arrows to reach it before backspacing it out.
 	to := from + deleted
-	if to > cx {
-		return
-	}
 	seq := cursorMoveSeq(cx - to)
 	for i := 0; i < deleted; i++ {
 		seq = append(seq, 0x7F)
