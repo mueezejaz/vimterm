@@ -106,14 +106,30 @@ func (a *App) mouseDrag(pos selection.Pos) {
 	a.dirty.Store(true)
 }
 
-// mouseWordSelect selects the word under the pointer.
+// mouseWordSelect selects the word under the pointer. wordStart/wordEnd
+// implement Vim's b/e motions, which skip the word under the cursor when it
+// sits on a boundary, so a dedicated contiguous scan is used instead: it
+// expands left and right over word cells from the click column.
 func (a *App) mouseWordSelect(pos selection.Pos) {
-	line := a.bufferLine(pos.Line)
-	start := wordStart(line, pos.Col, -1, wordKindWord)
-	end := wordEnd(line, pos.Col, wordKindWord)
-	if start == -1 || end == -1 {
+	cells := a.bufferLineCells(pos.Line)
+	isWord := func(x int) bool {
+		if x < 0 || x >= len(cells) {
+			return false
+		}
+		rs := []rune(cells[x].Content)
+		return len(rs) > 0 && wordChar(wordKindWord, rs[0])
+	}
+	if !isWord(pos.Col) {
 		a.mouseClick(pos)
 		return
+	}
+	start := pos.Col
+	for isWord(start - 1) {
+		start--
+	}
+	end := pos.Col
+	for isWord(end + 1) {
+		end++
 	}
 	a.mods.Enter(mode.ModeNormal)
 	a.sel.Begin(selection.Pos{Line: pos.Line, Col: start})

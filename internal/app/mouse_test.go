@@ -65,3 +65,29 @@ func TestMouseDoubleClickSelectsWord(t *testing.T) {
 		t.Fatalf("word selection %d..%d, want 4..6", s.Col, e.Col)
 	}
 }
+
+func TestMouseDoubleClickWordBoundaries(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "foo bar baz\r\n")
+	for _, col := range []int{4, 5, 6} {
+		a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: col, Y: 0, Down: true, Double: true})
+		if !a.sel.Active {
+			t.Fatalf("click at col %d: no selection", col)
+		}
+		s := a.sel.Start()
+		e := a.sel.End()
+		if s.Col != 4 || e.Col != 6 {
+			t.Fatalf("click at col %d: word selection %d..%d, want 4..6", col, s.Col, e.Col)
+		}
+	}
+}
+
+func TestMouseDoubleClickOnSpaceFallsBackToClick(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "foo bar\r\n")
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 3, Y: 0, Down: true, Double: true})
+	if a.sel.Active {
+		t.Fatal("double click on a space must not select")
+	}
+	if a.cur.Col != 3 {
+		t.Fatalf("cursor = %d, want 3 (plain click)", a.cur.Col)
+	}
+}
