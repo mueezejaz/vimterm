@@ -138,5 +138,12 @@ func (a *App) propagateDelete(segs []delSeg) {
 	}
 	if _, err := a.sess.Write(seq); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
+		return
 	}
+	// The shell processed the arrows and backspaces, so its cursor now sits
+	// at `from`. Nudge the emulator's cursor to match before the shell's own
+	// redraw arrives: otherwise the next shell-cursor nudge (e.g. enterInsert)
+	// would move an already-correct cursor and typed text lands in the wrong
+	// column.
+	_, _ = a.emu.Write(cursorMoveSeq(cx - from))
 }
