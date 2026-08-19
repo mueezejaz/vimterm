@@ -2,6 +2,11 @@ package app
 
 import "vimterm/internal/keybind"
 
+// maxCount caps the digit count prefix so an accidentally held digit key
+// cannot overflow a.count into a huge value that causes an OOM allocation
+// in count-aware actions (e.g. paste repeats).
+const maxCount = 100_000
+
 // countAware lists the actions that consume a numeric count prefix.
 // The count is handed off (a.cnt) before the handler runs; handlers read
 // it with takeCount.

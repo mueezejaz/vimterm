@@ -409,6 +409,9 @@ func (a *App) handleKey(k keybind.Key) {
 			d := int(k.Rune - '0')
 			if a.count != 0 || d != 0 {
 				a.count = a.count*10 + d
+				if a.count > maxCount {
+					a.count = maxCount
+				}
 				a.dirty.Store(true)
 				return
 			}
