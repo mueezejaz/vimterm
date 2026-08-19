@@ -310,7 +310,9 @@ func (a *App) applyConfig(cfg *config.Config) error {
 }
 
 func (a *App) loop(ctx context.Context) error {
-	tick := newFrameTicker()
+	ticker := newFrameTicker()
+	defer ticker.Stop()
+	tick := ticker.C
 	frame := render.NewFrame(0, 0)
 	var haveFrame bool
 

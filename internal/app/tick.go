@@ -2,8 +2,8 @@ package app
 
 import "time"
 
-// newFrameTicker returns a channel that fires at ~30fps for coalesced
-// repaints.
-func newFrameTicker() <-chan time.Time {
-	return time.Tick(33 * time.Millisecond)
+// newFrameTicker returns a ticker that fires at ~30fps for coalesced
+// repaints. The caller must call Stop when the loop exits.
+func newFrameTicker() *time.Ticker {
+	return time.NewTicker(33 * time.Millisecond)
 }
