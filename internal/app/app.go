@@ -55,6 +55,8 @@ type App struct {
 
 	// clipRead returns the paste text; overridable in tests.
 	clipRead func() (string, error)
+	// clipWrite stores text on the clipboard; overridable in tests.
+	clipWrite func(string) error
 
 	// mouseAnchor is where a mouse drag began (from the preceding click).
 	mouseAnchor selection.Pos
@@ -165,6 +167,7 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 	a.search = search.New(a.bufferLine)
 	a.macro = macro.New()
 	a.clipRead = clipboard.GetText
+	a.clipWrite = clipboard.SetText
 
 	if err := a.applyConfig(cfg); err != nil {
 		con.Close()

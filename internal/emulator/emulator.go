@@ -52,6 +52,10 @@ type Emulator interface {
 	// ScrollbackCell returns the cell at column x of scrolled-off line y
 	// (0 = oldest line). Out-of-range positions return a blank cell.
 	ScrollbackCell(x, y int) Cell
+	// DeleteLineCells removes n cells at column col of the absolute buffer
+	// line (scrollback + live screen), shifting the rest of the line left
+	// and blanking the freed tail.
+	DeleteLineCells(absLine, col, n int)
 	ClearScrollback()
 	// SetScrollbackSize sets the maximum number of scrollback lines.
 	SetScrollbackSize(maxLines int)
@@ -93,6 +97,48 @@ func (e *vtEmulator) ScrollbackCell(x, y int) Cell {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return fromUVCell(e.term.ScrollbackCellAt(x, y))
+}
+
+// DeleteLineCells removes n cells starting at column col of the absolute
+// buffer line. On the live screen it shifts the remaining cells left via
+// SetCell; on scrollback lines it mutates the stored uv.Line in place.
+// Both are safe because every term access in this package holds e.mu.
+func (e *vtEmulator) DeleteLineCells(absLine, col, n int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if n <= 0 || col < 0 {
+		return
+	}
+	sbLen := e.term.ScrollbackLen()
+	cols := e.term.Width()
+	if absLine < sbLen {
+		line := e.term.Scrollback().Line(absLine)
+		if line == nil || col >= len(line) {
+			return
+		}
+		if col+n > len(line) {
+			n = len(line) - col
+		}
+		copy(line[col:], line[col+n:])
+		for x := len(line) - n; x < len(line); x++ {
+			line[x] = uv.EmptyCell
+		}
+		return
+	}
+	y := absLine - sbLen
+	if y < 0 || y >= e.term.Height() || col >= cols {
+		return
+	}
+	if col+n > cols {
+		n = cols - col
+	}
+	blank := uv.EmptyCell
+	for x := col; x+n < cols; x++ {
+		e.term.SetCell(x, y, e.term.CellAt(x+n, y))
+	}
+	for x := cols - n; x < cols; x++ {
+		e.term.SetCell(x, y, &blank)
+	}
 }
 
 func fromUVCell(c *uv.Cell) Cell {

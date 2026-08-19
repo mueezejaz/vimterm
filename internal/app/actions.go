@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 
-	"vimterm/internal/clipboard"
 	"vimterm/internal/console"
 	"vimterm/internal/emulator"
 	"vimterm/internal/keybind"
@@ -52,7 +51,10 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionMoveWORDEnd:   func() { a.wordEndMotion(wordKindWORD) },
 		keybind.ActionPaste:         func() { a.paste(1) },
 		keybind.ActionPasteBefore:   func() { a.paste(-1) },
-		keybind.ActionQuit:          a.requestQuit,
+		keybind.ActionDeleteWord:    func() { a.deleteWord(1) },
+		keybind.ActionDeleteWordBack: func() { a.deleteWord(-1) },
+		keybind.ActionYankLine:       a.yankLine,
+		keybind.ActionQuit:           a.requestQuit,
 	}
 }
 
@@ -400,7 +402,7 @@ func (a *App) yank() {
 	if text != "" {
 		lines++
 	}
-	if err := clipboard.SetText(text); err != nil {
+	if err := a.clipWrite(text); err != nil {
 		a.setStatusMsg("clipboard: " + err.Error())
 	} else {
 		a.setStatusMsg(fmt.Sprintf("%d lines yanked", lines))

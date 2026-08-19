@@ -30,6 +30,9 @@ var countAware = map[keybind.Action]bool{
 	keybind.ActionMoveWORDEnd:   true,
 	keybind.ActionPaste:         true,
 	keybind.ActionPasteBefore:   true,
+	keybind.ActionDeleteWord:    true,
+	keybind.ActionDeleteWordBack: true,
+	keybind.ActionYankLine:       true,
 }
 
 // takeCount returns the count handed off before this action, or 1 when no

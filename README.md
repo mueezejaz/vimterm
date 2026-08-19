@@ -103,9 +103,10 @@ Available actions:
 | `scroll_up` `scroll_down` | `enter_insert` `enter_insert_after` `enter_insert_end` `enter_insert_home` `enter_normal` |
 | `search_forward` `search_next` `search_prev` | `command_prompt` |
 | `enter_visual` `enter_visual_line` `cancel_visual` | `yank` `paste` `paste_before` |
-| `record_macro` `play_macro` `repeat_last` | `find_char` `find_char_back` `find_until` `find_until_back` `find_next` `find_prev` |
-| `move_word` `move_word_back` `move_word_end` `move_word_upper` `move_word_back_upper` `move_word_end_upper` | `quit` |
+| `yank_line` `delete_word` `delete_word_back` | `record_macro` `play_macro` `repeat_last` |
+| `find_char` `find_char_back` `find_until` `find_until_back` `find_next` `find_prev` | `move_word` `move_word_back` `move_word_end` `move_word_upper` `move_word_back_upper` `move_word_end_upper` |
+| `quit` | |
 
 ### Default bindings
 
-Normal mode mirrors Vim: `h/j/k/l` and arrows move, `gg`/`G` jump, `ctrl+u`/`ctrl+d` scroll, `i`/`a`/`A`/`I` enter insert, `/` searches (`n`/`N` next/prev), `:` opens the command prompt, `v`/`V` visual, `y`/`p`/`P` yank/paste, `q`/`@` record/play macro, `.` repeats the last command, `f`/`F`/`t`/`T`/`;`/`,` find, `w`/`b`/`e` and `W`/`B`/`E` word motions, `ctrl+q` quits. Insert mode binds only `esc` and `ctrl+q`; everything else types through to the shell.
+Normal mode mirrors Vim: `h/j/k/l` and arrows move, `gg`/`G` jump, `ctrl+u`/`ctrl+d` scroll, `i`/`a`/`A`/`I` enter insert, `/` searches (`n`/`N` next/prev), `:` opens the command prompt, `v`/`V` visual, `y`/`p`/`P` yank/paste, `yy` yanks the whole line (with a count, several lines), `dw`/`db` delete (and cut) the word forward/backward, `q`/`@` record/play macro, `.` repeats the last command, `f`/`F`/`t`/`T`/`;`/`,` find, `w`/`b`/`e` and `W`/`B`/`E` word motions, `ctrl+q` quits. Insert mode binds only `esc` and `ctrl+q`; everything else types through to the shell.

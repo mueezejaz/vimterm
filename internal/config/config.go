@@ -104,6 +104,9 @@ func defaultNormalBindings() map[string]string {
 		"v":      "enter_visual",
 		"V":      "enter_visual_line",
 		"y":      "yank",
+		"yy":     "yank_line",
+		"dw":     "delete_word",
+		"db":     "delete_word_back",
 		"p":      "paste",
 		"P":      "paste_before",
 		"q":      "record_macro",
@@ -324,6 +327,9 @@ status_bg = ""
 ":" = "command_prompt"
 "v" = "enter_visual"
 "V" = "enter_visual_line"
+"yy" = "yank_line"
+"dw" = "delete_word"
+"db" = "delete_word_back"
 "q" = "record_macro"
 "@" = "play_macro"
 "." = "repeat_last"

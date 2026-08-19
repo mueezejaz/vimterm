@@ -43,6 +43,9 @@ const (
 	ActionEnterInsertHome  Action = "enter_insert_home"
 	ActionPaste            Action = "paste"
 	ActionPasteBefore      Action = "paste_before"
+	ActionDeleteWord       Action = "delete_word"
+	ActionDeleteWordBack   Action = "delete_word_back"
+	ActionYankLine         Action = "yank_line"
 	ActionQuit             Action = "quit"
 )
 
@@ -87,6 +90,9 @@ var AllActions = []Action{
 	ActionEnterInsertHome,
 	ActionPaste,
 	ActionPasteBefore,
+	ActionDeleteWord,
+	ActionDeleteWordBack,
+	ActionYankLine,
 	ActionQuit,
 }
 
