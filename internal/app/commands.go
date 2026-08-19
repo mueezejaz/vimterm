@@ -37,6 +37,13 @@ func (a *App) execCommand(line string) {
 		a.emu.ClearScrollback()
 		a.search.Clear()
 		a.vp.GotoBottom()
+		// Buffer coordinates shifted; re-derive the cursor eagerly like
+		// resize does.
+		a.curValid = false
+		a.syncCursor()
+		if a.sel.Active {
+			a.sel.Move(a.cur)
+		}
 		a.setStatusMsg("scrollback cleared")
 		return
 	case "shell":
