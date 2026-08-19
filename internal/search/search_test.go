@@ -7,11 +7,31 @@ import (
 )
 
 func fakeLine(texts []string) Line {
-	return func(l int) []rune {
+	return func(l int) []emulator.Cell {
 		if l < 0 || l >= len(texts) {
 			return nil
 		}
-		return []rune(texts[l])
+		var cells []emulator.Cell
+		for _, r := range texts[l] {
+			cells = append(cells, emulator.Cell{Content: string(r), Width: 1})
+		}
+		return cells
+	}
+}
+
+// fakeLineWide is like fakeLine but renders wide runes as a lead cell of
+// width 2 followed by an empty continuation cell, mirroring the terminal.
+func fakeLineWide(text string) Line {
+	return func(l int) []emulator.Cell {
+		if l != 0 {
+			return nil
+		}
+		var cells []emulator.Cell
+		for _, r := range text {
+			cells = append(cells, emulator.Cell{Content: string(r), Width: 2})
+			cells = append(cells, emulator.Cell{Content: "", Width: 0})
+		}
+		return cells
 	}
 }
 
@@ -186,5 +206,25 @@ func TestCaseInsensitive(t *testing.T) {
 	s.SetQuery([]rune("ábc"))
 	if len(s.Matches()) != 1 {
 		t.Fatalf("expected case-insensitive match, got %v", s.Matches())
+	}
+}
+
+func TestMatchColumnWideChars(t *testing.T) {
+	// 你 occupies cells 0-1, so "ab" starts at cell column 2, not rune 1.
+	s := New(fakeLineWide("你ab cd"))
+	s.SetQuery([]rune("ab"))
+	got := s.Matches()
+	want := []Match{{0, 2}}
+	if len(got) != len(want) {
+		t.Fatalf("matches = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("matches = %v, want %v", got, want)
+		}
+	}
+	// Navigation from a wide-char column must step to the next match.
+	if m, ok := s.Next(-1, -1); !ok || m != (Match{0, 2}) {
+		t.Fatalf("Next(-1,-1) = %+v,%v want 0,2 true", m, ok)
 	}
 }

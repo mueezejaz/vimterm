@@ -164,7 +164,7 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 	if fg, bg, ok := con.ThemeColors(); ok {
 		a.themeFg, a.themeBg, a.haveTheme = fg, bg, true
 	}
-	a.search = search.New(a.bufferLine)
+	a.search = search.New(a.bufferLineCells)
 	a.macro = macro.New()
 	a.clipRead = clipboard.GetText
 	a.clipWrite = clipboard.SetText
@@ -679,23 +679,35 @@ func (a *App) topAbsLine() int {
 	return a.emu.ScrollbackLen() - a.vp.Offset()
 }
 
-// bufferLine returns the runes of one absolute buffer line, or nil when the
-// line does not exist.
-func (a *App) bufferLine(absLine int) []rune {
+// bufferLineCells returns the cells of one absolute buffer line, or nil when
+// the line does not exist.
+func (a *App) bufferLineCells(absLine int) []emulator.Cell {
 	sbLen := a.emu.ScrollbackLen()
 	rows := a.emu.Height()
 	if absLine < 0 || absLine >= sbLen+rows {
 		return nil
 	}
 	cols := a.emu.Width()
-	var runes []rune
+	cells := make([]emulator.Cell, 0, cols)
 	for x := 0; x < cols; x++ {
-		var c emulator.Cell
 		if absLine < sbLen {
-			c = a.emu.ScrollbackCell(x, absLine)
+			cells = append(cells, a.emu.ScrollbackCell(x, absLine))
 		} else {
-			c = a.emu.Cell(x, absLine-sbLen)
+			cells = append(cells, a.emu.Cell(x, absLine-sbLen))
 		}
+	}
+	return cells
+}
+
+// bufferLine returns the runes of one absolute buffer line, or nil when the
+// line does not exist.
+func (a *App) bufferLine(absLine int) []rune {
+	cells := a.bufferLineCells(absLine)
+	if cells == nil {
+		return nil
+	}
+	var runes []rune
+	for _, c := range cells {
 		runes = append(runes, []rune(c.Content)...)
 	}
 	return runes

@@ -55,7 +55,7 @@ func realApp(t *testing.T, cols, hostRows int, content string) *App {
 		done:       make(chan struct{}),
 	}
 	a.engine.SetKeymaps(keymaps)
-	a.search = search.New(a.bufferLine)
+	a.search = search.New(a.bufferLineCells)
 	a.actions = a.actionMap()
 	a.vp.SetMax(a.emu.ScrollbackLen())
 	return a

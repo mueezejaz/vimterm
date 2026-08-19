@@ -8,8 +8,8 @@ import (
 	"vimterm/internal/emulator"
 )
 
-// Line returns the runes of one buffer line.
-type Line func(absLine int) []rune
+// Line returns the cells of one buffer line.
+type Line func(absLine int) []emulator.Cell
 
 // Match is one occurrence of the query: the buffer line and the cell column
 // where the occurrence starts.
@@ -57,10 +57,27 @@ func (s *Search) recompute() {
 	low := lower(s.query)
 	// A new batch can appear while we scan; clamp per line read.
 	for l := 0; ; l++ {
-		text := lower(s.line(l))
-		if len(text) == 0 {
+		cells := s.line(l)
+		if cells == nil {
 			break
 		}
+		// Flatten the cell row into runes, remembering the cell column each
+		// rune starts at. Wide characters occupy two cells but contribute one
+		// rune, so rune indices do not map 1:1 to columns.
+		runes := make([]rune, 0, len(cells))
+		runeCol := make([]int, 0, len(cells))
+		col := 0
+		for _, c := range cells {
+			for _, r := range []rune(c.Content) {
+				runes = append(runes, r)
+				runeCol = append(runeCol, col)
+			}
+			col += c.Width
+		}
+		if len(runes) == 0 {
+			continue
+		}
+		text := lower(runes)
 		// Collect every occurrence, not just the first: navigation must
 		// reach same-line duplicates that Highlight shows.
 		for from := 0; ; {
@@ -68,9 +85,7 @@ func (s *Search) recompute() {
 			if idx < 0 {
 				break
 			}
-			// The rune index maps 1:1 to cell columns (each cell holds at
-			// most one rune; continuation cells hold none).
-			s.matches = append(s.matches, Match{Line: l, Col: idx})
+			s.matches = append(s.matches, Match{Line: l, Col: runeCol[idx]})
 			from = idx + len(low)
 		}
 	}

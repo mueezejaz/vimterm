@@ -45,7 +45,7 @@ func newMotionApp(t *testing.T, cols, rows int, content string) *App {
 	}
 	a.engine.SetKeymaps(keymaps)
 	a.engine.SetTimeout(1000)
-	a.search = search.New(a.bufferLine)
+	a.search = search.New(a.bufferLineCells)
 	a.actions = a.actionMap()
 	// renderFrame calls SetMax before any motion in the real app.
 	a.vp.SetMax(a.emu.ScrollbackLen())

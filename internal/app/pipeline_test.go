@@ -163,22 +163,20 @@ func TestSearchWithRealShell(t *testing.T) {
 	}
 
 	// Same ConPTY input-drop protection as TestScrollbackWithRealShell.
-	line := func(absLine int) []rune {
+	line := func(absLine int) []emulator.Cell {
 		sb := emu.ScrollbackLen()
 		if absLine < 0 || absLine >= sb+emu.Height() {
 			return nil
 		}
-		var runes []rune
+		var cells []emulator.Cell
 		for x := 0; x < cols; x++ {
-			var c emulator.Cell
 			if absLine < sb {
-				c = emu.ScrollbackCell(x, absLine)
+				cells = append(cells, emu.ScrollbackCell(x, absLine))
 			} else {
-				c = emu.Cell(x, absLine-sb)
+				cells = append(cells, emu.Cell(x, absLine-sb))
 			}
-			runes = append(runes, []rune(c.Content)...)
 		}
-		return runes
+		return cells
 	}
 	time.Sleep(500 * time.Millisecond)
 	cmd := "1..40 | ForEach-Object { \"probe-$_\" }\r"
