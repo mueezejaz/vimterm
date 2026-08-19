@@ -60,7 +60,7 @@ func mergeAllowed(row []emulator.Cell, mode string) bool {
 		return false
 	}
 	for _, c := range row {
-		if c.Bg == (emulator.Color{}) || c.Bg.Default {
+		if c.Bg.Default {
 			continue
 		}
 		return true

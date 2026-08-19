@@ -13,6 +13,9 @@ func TestMergeAllowed(t *testing.T) {
 	styled := emulator.Cell{Content: "x", Width: 1, Fg: def, Bg: emulator.Color{R: 40, G: 40, B: 90}}
 
 	plain := make([]emulator.Cell, 4)
+	for i := range plain {
+		plain[i] = emulator.Cell{Content: "x", Width: 1, Fg: def, Bg: def}
+	}
 	withBar := make([]emulator.Cell, 4)
 	withBar[1] = styled
 
