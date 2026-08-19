@@ -387,6 +387,17 @@ func (a *App) handleKey(k keybind.Key) {
 			// Not macro-related (or recorded): fall through to the engine.
 		}
 	}
+	if a.find.pending() {
+		// f/F/t/T: consume the next printable key as the target. Any other
+		// key cancels the pending find and is handled normally.
+		if ch, ok := isTarget(k); ok {
+			a.doFind(a.find.pd, a.find.pu, ch)
+			a.dirty.Store(true)
+			return
+		}
+		a.find.clear()
+		a.cnt = 0
+	}
 	if !a.mods.Is(mode.ModeInsert) {
 		// Count prefix: digits accumulate in normal and visual modes. A
 		// leading zero is not a count and falls through to the engine.
@@ -398,17 +409,6 @@ func (a *App) handleKey(k keybind.Key) {
 				return
 			}
 		}
-	}
-	if a.find.pending() {
-		// f/F/t/T: consume the next printable key as the target. Any other
-		// key cancels the pending find and is handled normally.
-		if ch, ok := isTarget(k); ok {
-			a.doFind(a.find.pd, a.find.pu, ch)
-			a.dirty.Store(true)
-			return
-		}
-		a.find.clear()
-		a.cnt = 0
 	}
 	res, action := a.engine.Feed(modeName(a.mods.Current()), k)
 	switch res {
