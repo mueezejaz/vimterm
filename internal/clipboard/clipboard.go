@@ -97,7 +97,10 @@ func GetText() (string, error) {
 		return "", nil
 	}
 	buf := make([]uint16, n)
-	_, _, _ = copyMem.Call(uintptr(unsafe.Pointer(&buf[0])), ptr, size)
+	// Copy at most n*2 bytes: a malformed odd-sized clipboard block would
+	// otherwise write one byte past the backing array.
+	copySize := uintptr(n * 2)
+	_, _, _ = copyMem.Call(uintptr(unsafe.Pointer(&buf[0])), ptr, copySize)
 
 	end := 0
 	for end < len(buf) && buf[end] != 0 {
