@@ -32,8 +32,10 @@ func (a *App) handleMouse(e console.MouseEvent) {
 	case e.Down:
 		a.mouseClick(pos)
 	default:
-		a.sel.Cancel()
-		a.dirty.Store(true)
+		if e.Button == console.MouseNone {
+			a.sel.Cancel()
+			a.dirty.Store(true)
+		}
 	}
 }
 
