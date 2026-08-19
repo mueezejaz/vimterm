@@ -23,6 +23,10 @@ func (a *App) paste(flip int) {
 		return
 	}
 	n := a.takeCount()
+	// The Windows clipboard stores \r\n; ConPTY expects \r for Enter, so
+	// normalize before writing, or the shell sees two keystrokes per line.
+	text = strings.ReplaceAll(text, "\r\n", "\r")
+	text = strings.ReplaceAll(text, "\n", "\r")
 	a.syncCursor()
 	if flip > 0 {
 		line := a.bufferLine(a.cur.Line)
