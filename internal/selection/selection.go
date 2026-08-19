@@ -127,7 +127,11 @@ func (s *Selection) Text(line Line) string {
 		if to > len(runes) {
 			to = len(runes)
 		}
-		sb.WriteString(string(runes[from:to]))
+		if s.LineWise {
+			sb.WriteString(strings.TrimRight(string(runes[from:to]), " "))
+		} else {
+			sb.WriteString(string(runes[from:to]))
+		}
 	}
 	return sb.String()
 }
