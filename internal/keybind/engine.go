@@ -108,13 +108,16 @@ func (e *Engine) Feed(mode string, k Key) (Result, Action) {
 	return NoMatch, ""
 }
 
-// LastSeq returns the key sequence that produced the most recent Matched
-// result, or nil if there has been none.
+// LastSeq returns a copy of the key sequence that produced the most recent
+// Matched result, or nil if there has been none. The copy keeps callers safe
+// from the engine reusing its backing array on the next Feed.
 func (e *Engine) LastSeq() []Key {
 	if len(e.lastSeq) == 0 {
 		return nil
 	}
-	return e.lastSeq
+	out := make([]Key, len(e.lastSeq))
+	copy(out, e.lastSeq)
+	return out
 }
 
 // Pending returns a copy of the keys currently forming a partial sequence.
