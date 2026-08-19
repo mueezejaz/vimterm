@@ -69,9 +69,13 @@ func (a *App) countScroll(dl int) {
 }
 
 // countGoto handles gg/G with a count: Ngg or NG jump to line N; without a
-// count gg goes to the top and G to the bottom.
+// count gg goes to the top and G to the bottom. takeCount returns 1 both for
+// no count and for a literal 1, so check the raw cnt field to tell them apart
+// (1G must jump to line 1, not to the bottom).
 func (a *App) countGoto(top bool) {
-	if n := a.takeCount(); n > 1 {
+	hasCount := a.cnt > 0
+	n := a.takeCount()
+	if hasCount {
 		a.jumpCursorLine(n - 1)
 	} else if top {
 		a.jumpCursorTop()
