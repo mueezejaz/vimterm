@@ -25,6 +25,11 @@ type General struct {
 	// Timeoutlen is the time in milliseconds a partial key sequence may
 	// wait for completion before being discarded.
 	Timeoutlen int
+	// StatusMerge controls whether full-screen applications (alternate
+	// screen, e.g. nvim) get the full terminal height with vimterm's status
+	// bar overlaid on their status line: "auto" (merge only when the
+	// bottom row looks like a status line), "always", or "never".
+	StatusMerge string `toml:"status_merge"`
 }
 
 // Keybindings maps mode names to binding tables. Each table maps a key
@@ -63,6 +68,7 @@ func Default() *Config {
 			Scrollback: 10000,
 			Leader:     "space",
 			Timeoutlen: 1000,
+			StatusMerge: "auto",
 		},
 		Keybindings: Keybindings{
 			Normal: defaultNormalBindings(),
@@ -214,6 +220,14 @@ func Load(path string) (*Config, error) {
 	if cfg.General.Timeoutlen <= 0 {
 		cfg.General.Timeoutlen = 1000
 	}
+	switch cfg.General.StatusMerge {
+	case "", "auto", "always", "never":
+		if cfg.General.StatusMerge == "" {
+			cfg.General.StatusMerge = "auto"
+		}
+	default:
+		return nil, fmt.Errorf("config: general: status_merge: invalid value %q (want auto, always or never)", cfg.General.StatusMerge)
+	}
 	// TOML cannot distinguish an absent table from an empty one; treat absent
 	// sections as "use the defaults" so a minimal config keeps its bindings.
 	if cfg.Keybindings.Normal == nil {
@@ -269,6 +283,12 @@ leader = "space"
 # Milliseconds a partial key sequence (e.g. the first "g" of "gg") waits for
 # the next key before being discarded.
 timeoutlen = 1000
+# Full-screen applications (alternate screen, e.g. nvim) take the full
+# terminal height and vimterm's status bar overlays their status line while a
+# transient message is shown. "auto" merges only when the bottom row looks
+# like a status line, "always" merges unconditionally, "never" keeps the
+# always-visible vimterm bar.
+status_merge = "auto"
 
 [colors]
 # Status line colors, "#rrggbb". Empty = terminal defaults.

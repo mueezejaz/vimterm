@@ -14,6 +14,37 @@ func TestDefault(t *testing.T) {
 	if cfg.General.Scrollback != 10000 {
 		t.Errorf("default scrollback = %d, want 10000", cfg.General.Scrollback)
 	}
+	if cfg.General.StatusMerge != "auto" {
+		t.Errorf("default status_merge = %q, want auto", cfg.General.StatusMerge)
+	}
+}
+
+func TestLoadStatusMerge(t *testing.T) {
+	for _, want := range []string{"auto", "always", "never"} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		if err := os.WriteFile(path, []byte("[general]\nstatus_merge = \""+want+"\"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("status_merge = %q: %v", want, err)
+		}
+		if cfg.General.StatusMerge != want {
+			t.Errorf("status_merge = %q, want %q", cfg.General.StatusMerge, want)
+		}
+	}
+}
+
+func TestLoadInvalidStatusMerge(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[general]\nstatus_merge = \"sometimes\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error for invalid status_merge")
+	}
 }
 
 func TestLoadMissingKeysFallBackToDefaults(t *testing.T) {

@@ -86,6 +86,11 @@ type App struct {
 	curBlink  bool
 	lastInput time.Time
 
+	// altScreen reports whether the child is in the alternate screen
+	// (full-screen app such as nvim). While it is, the child gets the full
+	// terminal height and the status line is merged with the app's own.
+	altScreen bool
+
 	// gen guards the session reader/waiter goroutines across restarts: only
 	// the generation matching the current session may close a.done.
 	gen atomic.Int64
@@ -465,6 +470,15 @@ func (a *App) renderFrame(frame *render.Frame) {
 		a.screenCleared = true
 	}
 
+	// Track alternate-screen transitions: a full-screen app (nvim) takes the
+	// full height so its own status line lands on the bottom row, where
+	// vimterm's transient messages can overlay it.
+	if alt := a.emu.IsAltScreen(); alt != a.altScreen {
+		a.altScreen = alt
+		a.applyChildRows(a.screenCols, a.screenRows)
+		a.curValid = false
+	}
+
 	sbLen := a.emu.ScrollbackLen()
 	a.vp.SetMax(sbLen)
 	offset := a.vp.Offset()
@@ -548,7 +562,14 @@ func (a *App) renderFrame(frame *render.Frame) {
 		frame.CursorVisible = true
 	}
 
-	statusLine(frame.Cells[frame.Rows-1], a.mods.Current(), a.statusText(), a.sess.Name(), cx, cy, a.statusFg, a.statusBg)
+	if !a.altScreen || a.prompt != nil {
+		statusLine(frame.Cells[frame.Rows-1], a.mods.Current(), a.statusText(), a.sess.Name(), cx, cy, a.statusFg, a.statusBg)
+	} else if msg := a.statusMsg(); msg != "" && a.vp.Offset() == 0 &&
+		mergeAllowed(frame.Cells[frame.Rows-1], a.cfg.General.StatusMerge) {
+		// Full-screen app at the bottom of its screen: overlay the transient
+		// message on the left edge of its own status line.
+		overlayStatusMessage(frame.Cells[frame.Rows-1], a.mods.Current(), msg, a.statusFg, a.statusBg)
+	}
 	a.r.Draw(a.con, frame)
 }
 
@@ -556,10 +577,7 @@ func (a *App) resize(cols, rows int) {
 	if cols < 1 || rows < 1 {
 		return
 	}
-	termRows := terminalRows(rows)
-	_ = a.sess.Resize(cols, termRows)
-	a.emu.Resize(cols, termRows)
-	a.vp.SetRows(termRows)
+	a.applyChildRows(cols, rows)
 	a.screenCols, a.screenRows = cols, rows
 	// Buffer coordinates may have shifted; re-derive the cursor lazily.
 	a.curValid = false
@@ -567,6 +585,28 @@ func (a *App) resize(cols, rows int) {
 		a.syncCursor()
 		a.sel.Move(a.cur)
 	}
+}
+
+// applyChildRows resizes the child session, emulator and viewport to the
+// height the child gets: full height inside an alternate screen (status
+// merging), one row less otherwise (the status line).
+func (a *App) applyChildRows(cols, rows int) {
+	termRows := a.childRows(rows)
+	_ = a.sess.Resize(cols, termRows)
+	a.emu.Resize(cols, termRows)
+	a.vp.SetRows(termRows)
+}
+
+// childRows returns the child's terminal height for a host of the given
+// height.
+func (a *App) childRows(hostRows int) int {
+	if hostRows < 2 {
+		return 1
+	}
+	if a.altScreen && a.cfg.General.StatusMerge != "never" {
+		return hostRows
+	}
+	return hostRows - 1
 }
 
 // terminalRows reserves one row for the status line.

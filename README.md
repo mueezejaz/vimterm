@@ -62,6 +62,7 @@ clean = "leader+c"
 | `scrollback`| `10000`           | Max scrolled-off lines kept in memory                    |
 | `leader`    | `"space"`         | Leader key, used in bindings as the `leader` token       |
 | `timeoutlen`| `1000`            | ms a partial key sequence (e.g. the first `g` of `gg`) waits for completion |
+| `status_merge`| `"auto"`      | Full-screen apps (nvim) get the full height; vimterm's status bar overlays their status line while a message shows. `"auto"` merges only when the bottom row looks like a status line, `"always"` unconditionally, `"never"` keeps the vimterm bar below the app |
 
 ### `[colors]`
 
