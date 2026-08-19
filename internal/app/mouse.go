@@ -26,7 +26,9 @@ func (a *App) handleMouse(e console.MouseEvent) {
 	case e.Double:
 		a.mouseWordSelect(pos)
 	case e.Drag:
-		a.mouseDrag(pos)
+		if e.Button != console.MouseNone {
+			a.mouseDrag(pos)
+		}
 	case e.Down:
 		a.mouseClick(pos)
 	default:
