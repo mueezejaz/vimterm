@@ -217,13 +217,14 @@ func (a *App) closeDone() {
 // current generation (i.e. the session has not been restarted).
 func (a *App) startReader() {
 	sess := a.sess
+	emu := a.emu
 	gen := a.gen.Load()
 	go func() {
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := sess.Read(buf)
 			if n > 0 {
-				a.emu.Write(buf[:n])
+				emu.Write(buf[:n])
 				a.dirty.Store(true)
 			}
 			if err != nil {
