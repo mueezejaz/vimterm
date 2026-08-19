@@ -41,8 +41,10 @@ func (a *App) execCommand(line string) {
 		// resize does.
 		a.curValid = false
 		a.syncCursor()
+		// The visual anchor now points at a stale absolute line far beyond
+		// the new buffer, which would select a massive wrong range.
 		if a.sel.Active {
-			a.sel.Move(a.cur)
+			a.cancelVisual()
 		}
 		a.setStatusMsg("scrollback cleared")
 		return
