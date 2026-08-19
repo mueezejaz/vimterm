@@ -39,9 +39,9 @@ func (a *App) handleMouse(e console.MouseEvent) {
 // a buffer position. Row 0 of the viewport shows the oldest visible line.
 func (a *App) mousePos(x, y int) selection.Pos {
 	a.vp.SetMax(a.emu.ScrollbackLen())
-	rows := a.screenRows
+	rows := a.emu.Height()
 	if rows < 1 {
-		rows = a.emu.Height()
+		rows = a.screenRows
 	}
 	bufBottom := a.emu.ScrollbackLen() + a.emu.Height() - 1
 	abs := bufBottom - a.vp.Offset() - (rows - 1 - y)
