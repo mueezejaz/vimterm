@@ -118,17 +118,20 @@ func wrapForUTF8(program string, args []string) (string, []string) {
 		// Set both the raw console codepage and .NET's Console.OutputEncoding
 		// (PowerShell's own Write-Host/Write-Output path uses the latter),
 		// then hand off to an interactive shell so profile/prompt output
-		// that follows is correctly encoded.
+		// that follows is correctly encoded. User-supplied args (e.g.
+		// -NoProfile) must come before the wrapper, or the shell would
+		// treat them as part of the -Command string.
 		init := "chcp 65001 > $null; " +
 			"[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); " +
 			"[Console]::InputEncoding = [Text.UTF8Encoding]::new()"
-		newArgs := append([]string{"-NoExit", "-Command", init}, args...)
+		newArgs := append(append([]string(nil), args...), "-NoExit", "-Command", init)
 		return program, newArgs
 	case "cmd":
 		// /K keeps the shell open after running the codepage switch, then
-		// falls through to any user-supplied args (or an implicit prompt).
+		// falls through to an interactive prompt. User-supplied args come
+		// first so cmd does not treat them as part of the /K command.
 		cmdLine := "chcp 65001>nul"
-		newArgs := append([]string{"/K", cmdLine}, args...)
+		newArgs := append(append([]string(nil), args...), "/K", cmdLine)
 		return program, newArgs
 	default:
 		return program, args
