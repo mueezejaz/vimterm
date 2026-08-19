@@ -120,6 +120,16 @@ func Run(ctx context.Context, cfg *config.Config, configPath string) error {
 		return err
 	}
 	defer a.cleanup()
+	// Restore the console before letting a panic propagate: leaving the
+	// host terminal in raw mode (no echo, no line editing) after a crash
+	// is worse than the crash itself. cleanup is idempotent, so calling it
+	// here and in the deferred cleanup is safe.
+	defer func() {
+		if r := recover(); r != nil {
+			a.cleanup()
+			panic(r)
+		}
+	}()
 	return a.loop(ctx)
 }
 
@@ -223,6 +233,7 @@ func (a *App) startReader() {
 	emu := a.emu
 	gen := a.gen.Load()
 	go func() {
+		defer a.restoreOnPanic()
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := sess.Read(buf)
@@ -243,11 +254,22 @@ func (a *App) startReader() {
 	}()
 }
 
+// restoreOnPanic cleans up the console (idempotent) before re-panicking, so
+// a crash in a background goroutine never leaves the host terminal in raw
+// mode.
+func (a *App) restoreOnPanic() {
+	if r := recover(); r != nil {
+		a.cleanup()
+		panic(r)
+	}
+}
+
 // startWaiter detects child process exit, honoring session generations.
 func (a *App) startWaiter() {
 	sess := a.sess
 	gen := a.gen.Load()
 	go func() {
+		defer a.restoreOnPanic()
 		_ = sess.Wait(context.Background())
 		if gen == a.gen.Load() {
 			a.closeDone()
