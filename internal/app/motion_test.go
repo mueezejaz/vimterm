@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"vimterm/internal/config"
 	"vimterm/internal/emulator"
@@ -44,7 +45,10 @@ func newMotionApp(t *testing.T, cols, rows int, content string) *App {
 		macro:  macro.New(),
 	}
 	a.engine.SetKeymaps(keymaps)
-	a.engine.SetTimeout(1000)
+	// The production default is 1000ms; a plain 1000 here would be a
+	// 1000ns timeout that flushes pending sequences (gg, dw, ...) whenever
+	// the scheduler delays the next key by more than a microsecond.
+	a.engine.SetTimeout(1000 * time.Millisecond)
 	a.search = search.New(a.bufferLineCells)
 	a.actions = a.actionMap()
 	// renderFrame calls SetMax before any motion in the real app.
