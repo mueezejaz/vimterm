@@ -65,6 +65,50 @@ func TestMultipleOccurrencesPerLine(t *testing.T) {
 	}
 }
 
+func TestRefreshSkipsUnchangedBuffer(t *testing.T) {
+	var calls int
+	lines := []string{"hello world", "world cup"}
+	line := func(l int) []emulator.Cell {
+		calls++
+		if l < 0 || l >= len(lines) {
+			return nil
+		}
+		var cells []emulator.Cell
+		for _, r := range lines[l] {
+			cells = append(cells, emulator.Cell{Content: string(r), Width: 1})
+		}
+		return cells
+	}
+	s := New(line)
+	s.SetQuery([]rune("world"))
+	if len(s.Matches()) != 2 {
+		t.Fatalf("matches = %v, want 2", s.Matches())
+	}
+	before := calls
+	// Same query, same buffer length: repeat navigation must not rescan.
+	s.Refresh([]rune("world"), 2)
+	if calls != before {
+		t.Fatalf("Refresh rescanned an unchanged buffer (%d extra calls)", calls-before)
+	}
+	if len(s.Matches()) != 2 {
+		t.Fatalf("Refresh dropped matches: %v", s.Matches())
+	}
+	// Buffer grew: Refresh must rescan and pick up new matches.
+	lines = append(lines, "world again")
+	s.Refresh([]rune("world"), 3)
+	if calls == before {
+		t.Fatal("Refresh did not rescan a grown buffer")
+	}
+	if len(s.Matches()) != 3 {
+		t.Fatalf("matches = %v, want 3", s.Matches())
+	}
+	// Query changed: Refresh must rescan even at the same length.
+	s.Refresh([]rune("again"), 3)
+	if len(s.Matches()) != 1 || s.Matches()[0].Line != 2 {
+		t.Fatalf("matches = %v, want one match on line 2", s.Matches())
+	}
+}
+
 func TestEmptyQuery(t *testing.T) {
 	s := New(fakeLine([]string{"aaa", "bbb"}))
 	s.SetQuery(nil)

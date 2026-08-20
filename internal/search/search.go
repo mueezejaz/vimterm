@@ -25,6 +25,7 @@ type Search struct {
 	line    Line
 	query   []rune
 	matches []Match
+	scanned int // buffer lines covered by matches at the last recompute
 }
 
 // New creates a Search over the given line provider.
@@ -41,6 +42,7 @@ func (s *Search) Query() []rune {
 func (s *Search) Clear() {
 	s.query = nil
 	s.matches = nil
+	s.scanned = 0
 }
 
 // SetQuery replaces the query and recomputes all matches over the buffer.
@@ -49,8 +51,21 @@ func (s *Search) SetQuery(q []rune) {
 	s.recompute()
 }
 
+// Refresh recomputes the matches for q unless neither the query nor the
+// buffer length changed since the last scan. Repeat navigation (n/N with a
+// count) calls this with the unchanged query; without the length check each
+// step would rescan the whole buffer, making a counted search quadratic.
+func (s *Search) Refresh(q []rune, bufferLen int) {
+	if bufferLen == s.scanned && string(q) == string(s.query) {
+		return
+	}
+	s.query = q
+	s.recompute()
+}
+
 func (s *Search) recompute() {
 	s.matches = nil
+	s.scanned = 0
 	if len(s.query) == 0 || s.line == nil {
 		return
 	}
@@ -88,6 +103,7 @@ func (s *Search) recompute() {
 			s.matches = append(s.matches, Match{Line: l, Col: runeCol[idx]})
 			from = idx + len(low)
 		}
+		s.scanned = l + 1
 	}
 }
 

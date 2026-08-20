@@ -833,7 +833,9 @@ func (a *App) nextSearch(step int) {
 	if !a.curValid {
 		a.syncCursor()
 	}
-	a.search.SetQuery(a.search.Query())
+	// Re-scan the buffer only when new output arrived since the last scan;
+	// a counted search (99999n) must not rescan on every step.
+	a.search.Refresh(a.search.Query(), a.emu.ScrollbackLen()+a.emu.Height())
 	var m search.Match
 	var ok bool
 	if step > 0 {

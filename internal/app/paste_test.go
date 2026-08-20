@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"vimterm/internal/keybind"
@@ -98,5 +99,23 @@ func TestPasteClipboardError(t *testing.T) {
 	}
 	if msg := a.statusMsg(); msg == "" {
 		t.Fatal("expected a clipboard-error status message")
+	}
+}
+
+func TestPasteCountCapped(t *testing.T) {
+	// A large clipboard times a large count must not allocate the whole
+	// product (OOM); the repeat count is clamped to maxPasteBytes.
+	big := strings.Repeat("x", 64*1024)
+	a, fs := pasteApp(t, big)
+	pressDigits(t, a, "99999")
+	press(t, a, keybind.NewRune('p', 0))
+	// "abc" nudge: two left arrows to the virtual cursor.
+	const nudge = 6
+	pasted := len(fs.writes) - nudge
+	if pasted <= 0 {
+		t.Fatalf("p wrote %d bytes, want some paste text", len(fs.writes))
+	}
+	if pasted > maxPasteBytes {
+		t.Fatalf("counted paste wrote %d bytes, want <= %d", pasted, maxPasteBytes)
 	}
 }
