@@ -88,6 +88,30 @@ func TestStatusLineUnicodeMessage(t *testing.T) {
 	}
 }
 
+func TestStatusLineNarrowNoPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("statusLine panicked on narrow row: %v", r)
+		}
+	}()
+	for cols := 1; cols < len(" NORMAL "); cols++ {
+		row := make([]emulator.Cell, cols)
+		statusLine(row, mode.ModeNormal, "", "powershell.exe", 3, 1, defaultStatusFg, defaultStatusBg)
+	}
+}
+
+func TestStatusLineNarrowWithMessageNoPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("statusLine panicked on narrow row with message: %v", r)
+		}
+	}()
+	for cols := 1; cols < len(" NORMAL ")+len("long transient message"); cols++ {
+		row := make([]emulator.Cell, cols)
+		statusLine(row, mode.ModeNormal, "long transient message", "powershell.exe", 3, 1, defaultStatusFg, defaultStatusBg)
+	}
+}
+
 func TestTerminalRows(t *testing.T) {
 	cases := map[int]int{0: 1, 1: 1, 2: 1, 24: 23, 30: 29}
 	for in, want := range cases {

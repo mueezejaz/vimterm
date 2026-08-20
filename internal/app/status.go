@@ -35,6 +35,11 @@ func statusLine(row []emulator.Cell, m mode.Mode, msg, shell string, cx, cy int,
 	}
 	rightRunes := []rune(right)
 	rightStart := len(row) - len(rightRunes)
+	if rightStart < 0 {
+		// The row is narrower than the right text; start at the first column
+		// so the loop below truncates instead of indexing out of range.
+		rightStart = 0
+	}
 	if leftLen := len(leftRunes); leftLen < len(row) && rightStart < leftLen {
 		// The right side would overlap the mode indicator: clamp it to the
 		// columns right of the left text so narrow terminals keep both.
