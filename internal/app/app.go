@@ -101,6 +101,11 @@ type App struct {
 	statusMsg_  string
 	statusSetAt time.Time
 
+	// cfgMu guards the config-derived state that the config watcher
+	// goroutine writes (applyConfig) while the main loop reads it: cfg,
+	// statusFg, statusBg and cmdSeqs.
+	cfgMu sync.RWMutex
+
 	dirty         atomic.Bool
 	done          chan struct{}
 	doneOnce      sync.Once
@@ -279,7 +284,9 @@ func (a *App) startWaiter() {
 
 // applyConfig rebuilds the keymaps and runtime settings from a config. It
 // returns an error (leaving the app in its previous state) if the config is
-// invalid.
+// invalid. It may run on the config-watcher goroutine, so the fields it
+// writes (cfg, statusFg, statusBg, cmdSeqs) are guarded by cfgMu and read
+// only through the accessors below.
 func (a *App) applyConfig(cfg *config.Config) error {
 	leader, err := keybind.ParseLeader(cfg.General.Leader)
 	if err != nil {
@@ -311,24 +318,63 @@ func (a *App) applyConfig(cfg *config.Config) error {
 		}
 		seqs[name] = seq
 	}
-	a.cmdSeqs = seqs
 
 	// Status line colors.
-	a.statusFg, a.statusBg = defaultStatusFg, defaultStatusBg
+	statusFg, statusBg := defaultStatusFg, defaultStatusBg
 	if c, ok := config.ParseHexColor(cfg.Colors.StatusFg); ok {
-		a.statusFg = emulator.Color{R: c.R, G: c.G, B: c.B}
+		statusFg = emulator.Color{R: c.R, G: c.G, B: c.B}
 	} else if cfg.Colors.StatusFg != "" {
 		return fmt.Errorf("config: colors: status_fg: invalid color %q", cfg.Colors.StatusFg)
 	}
 	if c, ok := config.ParseHexColor(cfg.Colors.StatusBg); ok {
-		a.statusBg = emulator.Color{R: c.R, G: c.G, B: c.B}
+		statusBg = emulator.Color{R: c.R, G: c.G, B: c.B}
 	} else if cfg.Colors.StatusBg != "" {
 		return fmt.Errorf("config: colors: status_bg: invalid color %q", cfg.Colors.StatusBg)
 	}
 
+	a.cfgMu.Lock()
+	a.cmdSeqs = seqs
+	a.statusFg, a.statusBg = statusFg, statusBg
 	a.cfg = cfg
+	a.cfgMu.Unlock()
 	a.dirty.Store(true)
 	return nil
+}
+
+// statusStyle returns the configured status line colors.
+func (a *App) statusStyle() (fg, bg emulator.Color) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.statusFg, a.statusBg
+}
+
+// statusMergeMode returns the configured status_merge mode.
+func (a *App) statusMergeMode() string {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.General.StatusMerge
+}
+
+// shellCommand returns the configured shell program and its arguments.
+func (a *App) shellCommand() (string, []string) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.General.Shell, a.cfg.General.ShellArgs
+}
+
+// scrollbackSize returns the configured scrollback line limit.
+func (a *App) scrollbackSize() int {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.General.Scrollback
+}
+
+// customCommand returns the key sequence bound to a custom colon-command.
+func (a *App) customCommand(name string) ([]keybind.Key, bool) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	seq, ok := a.cmdSeqs[name]
+	return seq, ok
 }
 
 func (a *App) loop(ctx context.Context) error {
@@ -594,12 +640,14 @@ func (a *App) renderFrame(frame *render.Frame) {
 	}
 
 	if !a.altScreen || a.prompt != nil {
-		statusLine(frame.Cells[frame.Rows-1], a.mods.Current(), a.statusText(), a.sess.Name(), cx, cy, a.statusFg, a.statusBg)
+		fg, bg := a.statusStyle()
+		statusLine(frame.Cells[frame.Rows-1], a.mods.Current(), a.statusText(), a.sess.Name(), cx, cy, fg, bg)
 	} else if msg := a.statusMsg(); msg != "" && a.vp.Offset() == 0 &&
-		mergeAllowed(frame.Cells[frame.Rows-1], a.cfg.General.StatusMerge) {
+		mergeAllowed(frame.Cells[frame.Rows-1], a.statusMergeMode()) {
 		// Full-screen app at the bottom of its screen: overlay the transient
 		// message on the left edge of its own status line.
-		overlayStatusMessage(frame.Cells[frame.Rows-1], a.mods.Current(), msg, a.statusFg, a.statusBg)
+		fg, bg := a.statusStyle()
+		overlayStatusMessage(frame.Cells[frame.Rows-1], a.mods.Current(), msg, fg, bg)
 	}
 	a.r.Draw(a.con, frame)
 }
@@ -634,7 +682,7 @@ func (a *App) childRows(hostRows int) int {
 	if hostRows < 2 {
 		return 1
 	}
-	if a.altScreen && a.cfg.General.StatusMerge != "never" {
+	if a.altScreen && a.statusMergeMode() != "never" {
 		return hostRows
 	}
 	return hostRows - 1
@@ -820,7 +868,8 @@ func (a *App) moveCursorTo(absLine, col int) {
 // current viewport and config.
 func (a *App) restartShell() {
 	cols, termRows := a.screenCols, terminalRows(a.screenRows)
-	sess, err := pty.Spawn(a.cfg.General.Shell, a.cfg.General.ShellArgs, cols, termRows)
+	shell, shellArgs := a.shellCommand()
+	sess, err := pty.Spawn(shell, shellArgs, cols, termRows)
 	if err != nil {
 		a.setStatusMsg("shell: " + err.Error())
 		return
@@ -829,7 +878,7 @@ func (a *App) restartShell() {
 	old := a.sess
 	a.sess = sess
 	a.emu = emulator.New(cols, termRows)
-	a.emu.SetScrollbackSize(a.cfg.General.Scrollback)
+	a.emu.SetScrollbackSize(a.scrollbackSize())
 	a.vp.GotoBottom()
 	a.search.Clear()
 	a.startReader()

@@ -52,7 +52,7 @@ func (a *App) execCommand(line string) {
 		a.restartShell()
 		return
 	}
-	if seq, ok := a.cmdSeqs[name]; ok {
+	if seq, ok := a.customCommand(name); ok {
 		a.replayKeys(seq)
 		return
 	}
