@@ -93,6 +93,34 @@ func TestDrawKeepsSelectionOnEmptyLine(t *testing.T) {
 	}
 }
 
+func TestDrawEmitsExplicitBlackOnBlack(t *testing.T) {
+	// A blank cell whose foreground AND background are explicitly black is
+	// styled content: it must be emitted, not treated as an empty tail.
+	black := emulator.Color{}
+	if !significant(emulator.Cell{Content: " ", Width: 1, Fg: black, Bg: black}) {
+		t.Fatal("explicit black-on-black cell reported as insignificant")
+	}
+	f := NewFrame(6, 1)
+	f.Cells[0][2] = emulator.Cell{Content: " ", Width: 1, Fg: black, Bg: black}
+
+	var sb strings.Builder
+	Draw(&sb, f)
+	out := sb.String()
+
+	if !strings.Contains(out, "38;2;0;0;0") || !strings.Contains(out, "48;2;0;0;0") {
+		t.Errorf("explicit black colors not emitted: %q", out)
+	}
+}
+
+func TestNewFrameDefaultsAreUnset(t *testing.T) {
+	// Untouched frame cells carry the terminal default (not the zero value),
+	// so they stay insignificant while explicit black does not.
+	f := NewFrame(4, 1)
+	if significant(f.Cells[0][0]) {
+		t.Fatal("untouched default cell reported as significant")
+	}
+}
+
 func TestItoa(t *testing.T) {
 	cases := map[int]string{0: "0", 1: "1", 9: "9", 10: "10", 100: "100", 1000: "1000"}
 	for n, want := range cases {
@@ -162,7 +190,13 @@ func TestRendererErasesRemovedTail(t *testing.T) {
 	r.Draw(&sb, f)
 
 	sb.Reset()
-	f.Cells[0] = make([]emulator.Cell, 8)
+	// Blank replacement row carries terminal-default colors like any frame.
+	row := make([]emulator.Cell, 8)
+	def := emulator.Color{Default: true}
+	for i := range row {
+		row[i].Fg, row[i].Bg = def, def
+	}
+	f.Cells[0] = row
 	f.Cells[0][0] = emulator.Cell{Content: "x", Width: 1}
 	r.Draw(&sb, f)
 	out := sb.String()

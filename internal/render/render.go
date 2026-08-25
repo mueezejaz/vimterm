@@ -20,11 +20,18 @@ type Frame struct {
 	CursorVisible bool
 }
 
-// NewFrame allocates an empty frame.
+// NewFrame allocates an empty frame. Every cell starts with the terminal
+// default colors rather than the zero value, so an explicitly painted black
+// (#000000) stays distinguishable from "no color" downstream.
 func NewFrame(cols, rows int) *Frame {
+	def := emulator.Color{Default: true}
 	cells := make([][]emulator.Cell, rows)
 	for y := range cells {
 		cells[y] = make([]emulator.Cell, cols)
+		for x := range cells[y] {
+			cells[y][x].Fg = def
+			cells[y][x].Bg = def
+		}
 	}
 	return &Frame{Cols: cols, Rows: rows, Cells: cells, CursorVisible: true}
 }
@@ -120,6 +127,10 @@ func (r *Renderer) Draw(w io.Writer, f *Frame) {
 		prev := make([][]emulator.Cell, f.Rows)
 		for y := range prev {
 			prev[y] = make([]emulator.Cell, f.Cols)
+			for x := range prev[y] {
+				prev[y][x].Fg = emulator.Color{Default: true}
+				prev[y][x].Bg = emulator.Color{Default: true}
+			}
 		}
 		r.prev = prev
 	}
@@ -206,7 +217,9 @@ type style struct {
 // significant reports whether a cell must be drawn even when its content is
 // a blank: styled cells (the virtual cursor, selection, search highlights,
 // status line) are visible on empty space and must not be swallowed by the
-// trailing erase. The zero value counts as a blank cell.
+// trailing erase. Frames initialize their cells to the terminal default, so
+// a zero-value (explicitly painted black) color means styled content here,
+// never "no color".
 func significant(c emulator.Cell) bool {
 	if c.Content != "" && c.Content != " " {
 		return true
@@ -214,9 +227,6 @@ func significant(c emulator.Cell) bool {
 	if c.Reverse || c.Bold || c.Faint || c.Italic || c.Blink ||
 		c.Conceal || c.Strike || c.Underline {
 		return true
-	}
-	if c.Fg == (emulator.Color{}) && c.Bg == (emulator.Color{}) {
-		return false
 	}
 	return !c.Fg.Default || !c.Bg.Default
 }
