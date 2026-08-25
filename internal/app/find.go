@@ -116,14 +116,14 @@ func (a *App) doFind(dir int, until bool, ch rune) {
 // repeats).
 func (a *App) executeFind(dir int, until bool, ch rune, n int, skipFirst bool) {
 	a.syncCursor()
-	line := a.bufferLine(a.cur.Line)
-	col := findOnLine(line, a.cur.Col, dir, until, ch, n, skipFirst)
+	row := rowOf(a.bufferLineCells(a.cur.Line))
+	col := findOnLine(row.runes, row.runeAt(a.cur.Col), dir, until, ch, n, skipFirst)
 	if col == -1 {
 		a.setStatusMsg(fmt.Sprintf("find: no %q %s", ch, dirName(dir)))
 		a.dirty.Store(true)
 		return
 	}
-	a.cur.Col = col
+	a.cur.Col = row.colAt(col)
 	a.clampCursor()
 	a.ensureCursorVisible()
 	a.afterCursorMove()

@@ -100,19 +100,19 @@ func (a *App) wordEndMotion(kind int) {
 func (a *App) stepWord(dir, kind int) {
 	line := a.cur.Line
 	for {
-		text := a.bufferLine(line)
-		from := a.cur.Col
+		row := rowOf(a.bufferLineCells(line))
+		from := row.runeAt(a.cur.Col)
 		if line != a.cur.Line {
 			if dir > 0 {
 				from = 0
 			} else {
-				from = len(text) - 1
+				from = len(row.runes) - 1
 			}
 		}
-		col := wordStart(text, from, dir, kind)
+		col := wordStart(row.runes, from, dir, kind)
 		if col >= 0 {
 			a.cur.Line = line
-			a.cur.Col = col
+			a.cur.Col = row.colAt(col)
 			return
 		}
 		line += dir
@@ -126,15 +126,15 @@ func (a *App) stepWord(dir, kind int) {
 func (a *App) stepWordEnd(kind int) {
 	line := a.cur.Line
 	for {
-		text := a.bufferLine(line)
-		from := a.cur.Col
+		row := rowOf(a.bufferLineCells(line))
+		from := row.runeAt(a.cur.Col)
 		if line != a.cur.Line {
 			from = 0
 		}
-		col := wordEnd(text, from, kind)
+		col := wordEnd(row.runes, from, kind)
 		if col >= 0 {
 			a.cur.Line = line
-			a.cur.Col = col
+			a.cur.Col = row.colAt(col)
 			return
 		}
 		line++

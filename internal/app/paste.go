@@ -40,9 +40,10 @@ func (a *App) paste(flip int) {
 	}
 	a.syncCursor()
 	if flip > 0 {
-		line := a.bufferLine(a.cur.Line)
-		if a.cur.Col <= textEnd(line) {
-			a.cur.Col++
+		row := rowOf(a.bufferLineCells(a.cur.Line))
+		i := row.runeAt(a.cur.Col)
+		if te := textEnd(row.runes); te >= 0 && a.cur.Col <= row.endCol(te) {
+			a.cur.Col = row.colAt(i) + row.widths[i]
 		}
 	}
 	a.moveShellCursorToVirtual()

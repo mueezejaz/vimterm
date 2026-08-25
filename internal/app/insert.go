@@ -22,13 +22,15 @@ func firstNonSpace(line []rune) int {
 	return 0
 }
 
-// enterInsertAfter is a: enter insert one column right of the cursor, so
-// the next character lands after the one under the cursor.
+// enterInsertAfter is a: enter insert one character right of the cursor, so
+// the next character lands after the one under the cursor. A wide character
+// is skipped whole, not split in half.
 func (a *App) enterInsertAfter() {
 	a.syncCursor()
-	line := a.bufferLine(a.cur.Line)
-	if a.cur.Col <= textEnd(line) {
-		a.cur.Col++
+	row := rowOf(a.bufferLineCells(a.cur.Line))
+	i := row.runeAt(a.cur.Col)
+	if te := textEnd(row.runes); te >= 0 && a.cur.Col <= row.endCol(te) {
+		a.cur.Col = row.colAt(i) + row.widths[i]
 	}
 	a.enterInsert()
 }
@@ -36,14 +38,15 @@ func (a *App) enterInsertAfter() {
 // enterInsertEnd is A: enter insert at the end of the line.
 func (a *App) enterInsertEnd() {
 	a.syncCursor()
-	line := a.bufferLine(a.cur.Line)
-	a.cur.Col = textEnd(line) + 1
+	row := rowOf(a.bufferLineCells(a.cur.Line))
+	a.cur.Col = row.colAt(textEnd(row.runes) + 1)
 	a.enterInsert()
 }
 
 // enterInsertHome is I: enter insert at the first non-space character.
 func (a *App) enterInsertHome() {
 	a.syncCursor()
-	a.cur.Col = firstNonSpace(a.bufferLine(a.cur.Line))
+	row := rowOf(a.bufferLineCells(a.cur.Line))
+	a.cur.Col = row.colAt(firstNonSpace(row.runes))
 	a.enterInsert()
 }

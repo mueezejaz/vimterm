@@ -43,21 +43,26 @@ func (a *App) deleteWord(dir int) {
 	n := a.takeCount()
 	a.syncCursor()
 	var sb strings.Builder
+	// segs are in cell columns: DeleteLineCells and the shell's line editor
+	// both work per cell, so a wide character is never split in half.
 	var segs []delSeg
-	line, at := a.cur.Line, a.cur.Col
+	line := a.cur.Line
+	at := rowOf(a.bufferLineCells(line)).runeAt(a.cur.Col)
+	curCell := a.cur.Col
 	for deleted := 0; deleted < n; {
-		text := a.bufferLine(line)
-		if text == nil {
+		cells := a.bufferLineCells(line)
+		if cells == nil {
 			break
 		}
+		row := rowOf(cells)
 		from, to := at, at
 		if dir > 0 {
-			to = wordStart(text, at, 1, wordKindWord)
+			to = wordStart(row.runes, at, 1, wordKindWord)
 			if to < 0 {
-				to = textEnd(text) + 1
+				to = textEnd(row.runes) + 1
 			}
 		} else {
-			from = wordStart(text, at, -1, wordKindWord)
+			from = wordStart(row.runes, at, -1, wordKindWord)
 			if from < 0 {
 				break
 			}
@@ -66,20 +71,23 @@ func (a *App) deleteWord(dir int) {
 			if dir > 0 {
 				line++
 				at = 0
+				curCell = 0
 				continue
 			}
 			break
 		}
+		cellFrom, cellTo := row.colAt(from), row.colAt(to)
 		if line != a.cur.Line && sb.Len() > 0 {
 			sb.WriteByte('\n')
 		}
-		sb.WriteString(string(text[from:to]))
-		a.emu.DeleteLineCells(line, from, to-from)
-		segs = append(segs, delSeg{line, from, to})
+		sb.WriteString(string(row.runes[from:to]))
+		a.emu.DeleteLineCells(line, cellFrom, cellTo-cellFrom)
+		segs = append(segs, delSeg{line, cellFrom, cellTo})
 		at = from
+		curCell = cellFrom
 		deleted++
 	}
-	a.cur.Line, a.cur.Col = line, at
+	a.cur.Line, a.cur.Col = line, curCell
 	a.clampCursor()
 	a.ensureCursorVisible()
 	a.dirty.Store(true)
@@ -95,7 +103,8 @@ func (a *App) deleteWord(dir int) {
 	a.setStatusMsg(fmt.Sprintf("%d words deleted", n))
 }
 
-// delSeg is one contiguous deleted range within a single buffer line.
+// delSeg is one contiguous deleted range within a single buffer line, in
+// cell columns.
 type delSeg struct {
 	line, from, to int
 }

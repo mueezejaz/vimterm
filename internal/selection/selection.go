@@ -13,16 +13,33 @@ type Pos struct {
 	Col  int
 }
 
-// Line returns the runes of one buffer line, or nil when it does not exist.
-type Line func(absLine int) []rune
+// Line returns the runes of one buffer line together with the starting cell
+// column of every rune (nil runes when the line does not exist). Wide
+// characters occupy two cells but contribute one rune, so columns are not
+// simply 0..n-1.
+type Line func(absLine int) ([]rune, []int)
+
+// lastRuneAtCol returns the index of the last rune whose first cell column
+// is at or left of col, i.e. the rune occupying that cell. A continuation
+// cell resolves to its lead rune; out-of-range columns clamp.
+func lastRuneAtCol(cols []int, col int) int {
+	idx := 0
+	for i, c := range cols {
+		if c > col {
+			break
+		}
+		idx = i
+	}
+	return idx
+}
 
 // Selection tracks an anchor and the current cursor for char- or line-wise
 // visual selection.
 type Selection struct {
-	Active  bool
+	Active   bool
 	LineWise bool
-	Anchor  Pos
-	Current Pos
+	Anchor   Pos
+	Current  Pos
 }
 
 // Begin starts a selection at the given position (char-wise by default).
@@ -105,17 +122,17 @@ func (s *Selection) Text(line Line) string {
 			sb.WriteByte('\n')
 		}
 		first = false
-		runes := line(l)
-		if len(runes) == 0 {
+		runes, cols := line(l)
+		if runes == nil {
 			continue
 		}
 		from, to := 0, len(runes)
 		if !s.LineWise {
 			if l == start.Line {
-				from = start.Col
+				from = lastRuneAtCol(cols, start.Col)
 			}
 			if l == end.Line {
-				to = end.Col + 1
+				to = lastRuneAtCol(cols, end.Col) + 1
 			}
 			if from > to {
 				from, to = to, from

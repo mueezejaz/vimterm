@@ -772,15 +772,21 @@ func (a *App) bufferLineCells(absLine int) []emulator.Cell {
 // bufferLine returns the runes of one absolute buffer line, or nil when the
 // line does not exist.
 func (a *App) bufferLine(absLine int) []rune {
+	runes, _ := a.bufferLineRow(absLine)
+	return runes
+}
+
+// bufferLineRow returns the runes of one absolute buffer line together with
+// the starting cell column of each rune, or nil when the line does not
+// exist. Wide characters span two cells but contribute one rune, so the
+// columns are not simply 0..n-1.
+func (a *App) bufferLineRow(absLine int) ([]rune, []int) {
 	cells := a.bufferLineCells(absLine)
 	if cells == nil {
-		return nil
+		return nil, nil
 	}
-	var runes []rune
-	for _, c := range cells {
-		runes = append(runes, []rune(c.Content)...)
-	}
-	return runes
+	row := rowOf(cells)
+	return row.runes, row.cols
 }
 
 // jumpToAbsLine scrolls the viewport so the given absolute line is at the

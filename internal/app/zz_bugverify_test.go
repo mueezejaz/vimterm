@@ -149,7 +149,7 @@ func TestVerifyYankTrailingSpaces(t *testing.T) {
 	a.sel.Begin(selection.Pos{Line: 0, Col: 0})
 	a.sel.SetLineWise(true)
 	a.sel.Move(selection.Pos{Line: 0, Col: 0})
-	text := a.sel.Text(a.bufferLine)
+	text := a.sel.Text(a.bufferLineRow)
 	t.Logf("linewise yank text = %q", text)
 	if text != "hello" {
 		t.Fatalf("yank = %q (%d trailing spaces confirmed)", text, len(text)-len("hello"))

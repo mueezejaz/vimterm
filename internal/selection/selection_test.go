@@ -6,11 +6,27 @@ import (
 )
 
 func fakeLine(texts []string) Line {
-	return func(l int) []rune {
+	return func(l int) ([]rune, []int) {
 		if l < 0 || l >= len(texts) {
-			return nil
+			return nil, nil
 		}
-		return []rune(texts[l])
+		runes := []rune(texts[l])
+		cols := make([]int, len(runes))
+		for i := range cols {
+			cols[i] = i
+		}
+		return runes, cols
+	}
+}
+
+// fakeWideLine serves one line where the first rune is wide (two cells):
+// runes [你 a b] start at cell columns [0 2 3].
+func fakeWideLine() Line {
+	return func(l int) ([]rune, []int) {
+		if l != 0 {
+			return nil, nil
+		}
+		return []rune("你ab"), []int{0, 2, 3}
 	}
 }
 
@@ -126,5 +142,16 @@ func TestTextTrailingWhitespace(t *testing.T) {
 	got := s.Text(fakeLine(lines()))
 	if !strings.HasPrefix(got, "alpha beta") || strings.TrimSuffix(got, " ") == "" {
 		t.Fatalf("unexpected text %q", got)
+	}
+}
+
+func TestCharWiseWideChars(t *testing.T) {
+	var s Selection
+	// Columns are cell columns: 1 is the continuation cell of 你, so the
+	// selection must resolve to whole runes (你..b), never half of one.
+	s.Begin(Pos{0, 1})
+	s.Move(Pos{0, 3})
+	if got := s.Text(fakeWideLine()); got != "你ab" {
+		t.Fatalf("text = %q, want 你ab", got)
 	}
 }
