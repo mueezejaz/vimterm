@@ -363,16 +363,13 @@ func cursorBlockStyle(cell emulator.Cell, themeFg, themeBg emulator.Color) (fg, 
 // cursorMoveSeq builds the escape sequences that move a line editor cursor
 // by delta cells: positive moves left, negative right.
 func cursorMoveSeq(delta int) []byte {
-	n := delta
-	if n < 0 {
-		n = -n
+	n, arrow := delta, byte('D') // left
+	if delta < 0 {
+		n, arrow = -delta, 'C' // right
 	}
-	seq := make([]byte, 0, 4*n)
-	for d := delta; d < 0; d++ {
-		seq = append(seq, '\x1b', '[', 'C') // right
-	}
-	for d := delta; d > 0; d-- {
-		seq = append(seq, '\x1b', '[', 'D') // left
+	seq := make([]byte, 0, 3*n)
+	for i := 0; i < n; i++ {
+		seq = append(seq, '\x1b', '[', arrow)
 	}
 	return seq
 }
