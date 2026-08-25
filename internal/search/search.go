@@ -148,8 +148,9 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int) {
 		}
 	}
 	low := lower(s.query)
-	for i := 0; ; i++ {
-		idx := indexFrom(lower(runes), low, i)
+	text := lower(runes)
+	for from := 0; ; {
+		idx := indexFrom(text, low, from)
 		if idx < 0 {
 			return
 		}
@@ -163,7 +164,7 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int) {
 			}
 			runePos += n
 		}
-		i = idx + len(low) - 1
+		from = idx + len(low)
 	}
 }
 
