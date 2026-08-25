@@ -12,6 +12,7 @@ func Watch(path string, interval time.Duration, cb func(*Config, error)) func() 
 	stop := make(chan struct{})
 	go func() {
 		var lastMod time.Time
+		var lastSize int64 = -1
 		for {
 			select {
 			case <-stop:
@@ -21,8 +22,12 @@ func Watch(path string, interval time.Duration, cb func(*Config, error)) func() 
 				if err != nil {
 					continue
 				}
-				if !info.ModTime().Equal(lastMod) {
+				// Modification times are coarse on some filesystems (FAT:
+				// 2s), so an edit that lands within the resolution of the
+				// previous write is only visible through its size.
+				if !info.ModTime().Equal(lastMod) || info.Size() != lastSize {
 					lastMod = info.ModTime()
+					lastSize = info.Size()
 					cfg, err := Load(path)
 					cb(cfg, err)
 				}
