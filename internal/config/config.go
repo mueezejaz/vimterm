@@ -277,11 +277,78 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config: open %s: %w", path, err)
 	}
 	defer f.Close()
-	// The unmarshaler interface must be enabled explicitly so Binding can
-	// accept both the string and list spellings.
+
+	// Decode into a parallel struct with pointer fields. TOML merges into
+	// existing maps, so decoding directly into Default() would keep default
+	// keys the user never listed (e.g. "esc" in insert mode). Pointer
+	// fields let us distinguish "section present in TOML" from "absent"
+	// and only apply defaults for truly absent ones.
+	type probeGeneral struct {
+		Shell       *string  `toml:"shell"`
+		ShellArgs   []string `toml:"shell_args"`
+		Scrollback  *int     `toml:"scrollback"`
+		Leader      *string  `toml:"leader"`
+		Timeoutlen  *int     `toml:"timeoutlen"`
+		StatusMerge *string  `toml:"status_merge"`
+	}
+	type probeColors struct {
+		StatusFg *string `toml:"status_fg"`
+		StatusBg *string `toml:"status_bg"`
+	}
+	type probeKeybindings struct {
+		Normal *map[string]Binding `toml:"normal"`
+		Insert *map[string]Binding `toml:"insert"`
+		Visual *map[string]Binding `toml:"visual"`
+	}
+	type probeConfig struct {
+		General     probeGeneral       `toml:"general"`
+		Keybindings probeKeybindings   `toml:"keybindings"`
+		Colors      probeColors        `toml:"colors"`
+		Commands    *map[string]string `toml:"commands"`
+	}
+	var probe probeConfig
+
 	dec := toml.NewDecoder(f).EnableUnmarshalerInterface()
-	if err := dec.Decode(cfg); err != nil {
+	if err := dec.Decode(&probe); err != nil {
 		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+	}
+	// Merge probe into cfg: only overwrite defaults when the TOML provided
+	// a value (non-nil pointer means "key was present in TOML").
+	if probe.General.Shell != nil {
+		cfg.General.Shell = *probe.General.Shell
+	}
+	if probe.General.ShellArgs != nil {
+		cfg.General.ShellArgs = probe.General.ShellArgs
+	}
+	if probe.General.Scrollback != nil {
+		cfg.General.Scrollback = *probe.General.Scrollback
+	}
+	if probe.General.Leader != nil {
+		cfg.General.Leader = *probe.General.Leader
+	}
+	if probe.General.Timeoutlen != nil {
+		cfg.General.Timeoutlen = *probe.General.Timeoutlen
+	}
+	if probe.General.StatusMerge != nil {
+		cfg.General.StatusMerge = *probe.General.StatusMerge
+	}
+	if probe.Colors.StatusFg != nil {
+		cfg.Colors.StatusFg = *probe.Colors.StatusFg
+	}
+	if probe.Colors.StatusBg != nil {
+		cfg.Colors.StatusBg = *probe.Colors.StatusBg
+	}
+	if probe.Keybindings.Normal != nil {
+		cfg.Keybindings.Normal = *probe.Keybindings.Normal
+	}
+	if probe.Keybindings.Insert != nil {
+		cfg.Keybindings.Insert = *probe.Keybindings.Insert
+	}
+	if probe.Keybindings.Visual != nil {
+		cfg.Keybindings.Visual = *probe.Keybindings.Visual
+	}
+	if probe.Commands != nil {
+		cfg.Commands = *probe.Commands
 	}
 	if cfg.General.Shell == "" {
 		cfg.General.Shell = "powershell.exe"
@@ -300,8 +367,9 @@ func Load(path string) (*Config, error) {
 	default:
 		return nil, fmt.Errorf("config: general: status_merge: invalid value %q (want auto, always or never)", cfg.General.StatusMerge)
 	}
-	// TOML cannot distinguish an absent table from an empty one; treat absent
-	// sections as "use the defaults" so a minimal config keeps its bindings.
+	// TOML cannot distinguish an absent table from an empty one; treat
+	// absent sections as "use the defaults" so a minimal config keeps
+	// its bindings.
 	if cfg.Keybindings.Normal == nil {
 		cfg.Keybindings.Normal = defaultNormalBindings()
 	}
