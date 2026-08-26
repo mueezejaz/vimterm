@@ -104,6 +104,26 @@ func keyFromRecord(vk uint16, r rune, state uint32) keybind.Key {
 	return keybind.NewRune(r, mods)
 }
 
+// keyEventsFromRecord expands one key-down record into the keys it
+// represents. Windows coalesces auto-repeat: holding a key produces a
+// single record whose wRepeatCount is the number of presses, so each count
+// must become its own event or held keys fire exactly once.
+func keyEventsFromRecord(vk uint16, r rune, state uint32, repeatCount uint16) []keybind.Key {
+	key := keyFromRecord(vk, r, state)
+	if key.Code == 0 && key.Rune == 0 {
+		return nil
+	}
+	n := int(repeatCount)
+	if n < 1 {
+		n = 1
+	}
+	keys := make([]keybind.Key, n)
+	for i := range keys {
+		keys[i] = key
+	}
+	return keys
+}
+
 func modsFromState(state uint32) keybind.Mods {
 	var mods keybind.Mods
 	if state&shiftPressed != 0 {

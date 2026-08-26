@@ -261,14 +261,12 @@ func (c *Console) inputLoop() {
 				if ke.keyDown == 0 {
 					continue
 				}
-				key := keyFromRecord(ke.virtualKeyCode, rune(ke.unicodeChar), ke.controlKeyState)
-				if key.Code == 0 && key.Rune == 0 {
-					continue
-				}
-				select {
-				case c.events <- KeyEvent{Key: key}:
-				case <-c.done:
-					return
+				for _, key := range keyEventsFromRecord(ke.virtualKeyCode, rune(ke.unicodeChar), ke.controlKeyState, ke.repeatCount) {
+					select {
+					case c.events <- KeyEvent{Key: key}:
+					case <-c.done:
+						return
+					}
 				}
 			case eventMouse:
 				me := (*mouseEventRecord)(unsafe.Pointer(&rec.union[0]))
