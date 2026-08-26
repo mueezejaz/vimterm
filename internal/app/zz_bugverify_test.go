@@ -52,8 +52,9 @@ func realApp(t *testing.T, cols, hostRows int, content string) *App {
 		cfg:        cfg,
 		screenCols: cols,
 		screenRows: hostRows,
-		done:       make(chan struct{}),
 	}
+	a.tabs = []*tabState{newTabState(nil, emu, termRows)}
+	a.active = 0
 	a.engine.SetKeymaps(keymaps)
 	a.search = search.New(a.bufferLineCells)
 	a.actions = a.actionMap()
@@ -199,22 +200,25 @@ func TestVerifyMergeAllowedBlack(t *testing.T) {
 // current a.emu and races restartShell's replacement.
 func TestVerifyReaderEmulatorRace(t *testing.T) {
 	a := realApp(t, 40, 6, "x\r\n")
+	tt := a.tabs[a.active]
 	blocker := make(chan struct{})
-	a.sess = &stuckSession{release: blocker}
-	a.startReader()
+	tt.sess = &stuckSession{release: blocker}
+	a.startReader(tt)
 	// While the old reader is parked in Read, swap the emulator like
 	// restartShell does; then let the old session deliver output.
-	old := a.emu
-	a.emu = emulator.New(40, 5)
+	old := tt.emu
+	newEmu := emulator.New(40, 5)
+	tt.emu = newEmu
+	a.emu = newEmu
 	close(blocker)
 	// Wait for the old reader to deliver its output.
 	for i := 0; i < 100; i++ {
-		if strings.Contains(a.emu.Cell(0, 1).Content, "Z") || strings.Contains(old.Cell(0, 1).Content, "Z") {
+		if strings.Contains(newEmu.Cell(0, 1).Content, "Z") || strings.Contains(old.Cell(0, 1).Content, "Z") {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	newCell := a.emu.Cell(0, 1).Content
+	newCell := newEmu.Cell(0, 1).Content
 	oldCell := old.Cell(0, 1).Content
 	t.Logf("after swap: new emu(0,1)=%q old emu(0,1)=%q", newCell, oldCell)
 	if strings.Contains(newCell, "Z") {

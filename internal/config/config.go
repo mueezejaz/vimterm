@@ -53,21 +53,21 @@ type Commands map[string]string
 
 // Config is the full application configuration.
 type Config struct {
-	General    General    `toml:"general"`
+	General     General     `toml:"general"`
 	Keybindings Keybindings `toml:"keybindings"`
-	Colors     Colors     `toml:"colors"`
-	Commands   Commands   `toml:"commands"`
+	Colors      Colors      `toml:"colors"`
+	Commands    Commands    `toml:"commands"`
 }
 
 // Default returns the built-in defaults.
 func Default() *Config {
 	return &Config{
 		General: General{
-			Shell:      "powershell.exe",
-			ShellArgs:  []string{},
-			Scrollback: 10000,
-			Leader:     "space",
-			Timeoutlen: 1000,
+			Shell:       "powershell.exe",
+			ShellArgs:   []string{},
+			Scrollback:  10000,
+			Leader:      "space",
+			Timeoutlen:  1000,
 			StatusMerge: "auto",
 		},
 		Keybindings: Keybindings{
@@ -124,6 +124,8 @@ func defaultNormalBindings() map[string]string {
 		"W":      "move_word_upper",
 		"B":      "move_word_back_upper",
 		"E":      "move_word_end_upper",
+		"gt":     "next_tab",
+		"gT":     "prev_tab",
 		"ctrl+q": "quit",
 	}
 }
@@ -345,6 +347,8 @@ status_bg = ""
 "W" = "move_word_upper"
 "B" = "move_word_back_upper"
 "E" = "move_word_end_upper"
+"gt" = "next_tab"
+"gT" = "prev_tab"
 "ctrl+q" = "quit"
 
 [keybindings.insert]

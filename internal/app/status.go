@@ -14,9 +14,10 @@ var (
 )
 
 // statusLine fills the given row with the status line: the mode name on the
-// left (plus any transient message), and shell/cursor information on the
-// right.
-func statusLine(row []emulator.Cell, m mode.Mode, msg, shell string, cx, cy int, fg, bg emulator.Color) {
+// left (plus any transient message), the open tabs in the middle (only when
+// more than one is open; the active label is reversed), and shell/cursor
+// information on the right.
+func statusLine(row []emulator.Cell, m mode.Mode, msg, shell string, cx, cy int, fg, bg emulator.Color, labels []string, active int) {
 	left := fmt.Sprintf(" %s ", m)
 	if msg != "" {
 		left += msg
@@ -51,6 +52,41 @@ func statusLine(row []emulator.Cell, m mode.Mode, msg, shell string, cx, cy int,
 			break
 		}
 		row[col] = statusCell(r, fg, bg)
+	}
+	drawTabLabels(row, labels, active, len(leftRunes), rightStart, fg, bg)
+}
+
+// drawTabLabels writes the tab labels into the gap between the left text
+// (ending at leftEnd) and the right text (starting at rightStart). Labels
+// are dropped whole from the end when space runs out; the active tab's
+// label is drawn reversed. With fewer than two labels it draws nothing.
+func drawTabLabels(row []emulator.Cell, labels []string, active, leftEnd, rightStart int, fg, bg emulator.Color) {
+	if len(labels) < 2 {
+		return
+	}
+	start := leftEnd
+	if room := rightStart - start; room < 6 {
+		// Not enough room to show anything useful.
+		return
+	}
+	pos := start
+	shown := 0
+	for i, l := range labels {
+		n := 1 + len([]rune(l)) + 1 // padding + label + padding
+		if pos+n > rightStart-1 {
+			break
+		}
+		row[pos] = statusCell(' ', fg, bg)
+		pos++
+		for _, r := range []rune(l) {
+			c := statusCell(r, fg, bg)
+			c.Reverse = i == active
+			row[pos] = c
+			pos++
+		}
+		row[pos] = statusCell(' ', fg, bg)
+		pos++
+		shown++
 	}
 }
 

@@ -5,9 +5,13 @@ import "strings"
 // builtinCommands lists the colon-command names the app understands
 // natively; custom commands from [commands] cannot shadow them.
 var builtinCommands = map[string]bool{
-	"quit":  true,
-	"clear": true,
-	"shell": true,
+	"quit":     true,
+	"clear":    true,
+	"shell":    true,
+	"new":      true,
+	"tabnew":   true,
+	"close":    true,
+	"tabclose": true,
 }
 
 // parseCommand splits a command line into name and arguments. Empty or
@@ -50,6 +54,12 @@ func (a *App) execCommand(line string) {
 		return
 	case "shell":
 		a.restartShell()
+		return
+	case "new", "tabnew":
+		a.newTab()
+		return
+	case "close", "tabclose":
+		a.closeTab(a.active)
 		return
 	}
 	if seq, ok := a.customCommand(name); ok {

@@ -16,7 +16,6 @@ import (
 	"vimterm/internal/keybind"
 	"vimterm/internal/macro"
 	"vimterm/internal/mode"
-	"vimterm/internal/pty"
 	"vimterm/internal/render"
 	"vimterm/internal/screen"
 	"vimterm/internal/search"
@@ -82,20 +81,29 @@ type App struct {
 	curValid bool
 	sel      selection.Selection
 
+	// altScreen reports whether the active tab's child is in the alternate
+	// screen (full-screen app such as nvim). While it is, the child gets
+	// the full terminal height and the status line is merged with the
+	// app's own.
+	altScreen bool
+
 	// Virtual cursor blinking: curBlink is the visible phase; lastInput is
 	// the time of the last key/mouse/resize event, resetting the cursor to
 	// solid so it does not blink while the user is active.
 	curBlink  bool
 	lastInput time.Time
 
-	// altScreen reports whether the child is in the alternate screen
-	// (full-screen app such as nvim). While it is, the child gets the full
-	// terminal height and the status line is merged with the app's own.
-	altScreen bool
+	// The open tabs. The focused tab's state is materialized into the
+	// corresponding App fields above (sess, emu, vp, search, cur, sel,
+	// ...); tabs[active] mirrors them while it is focused and preserves
+	// them when another tab takes over. Only the main loop goroutine may
+	// switch tabs or touch the slice.
+	tabs   []*tabState
+	active int
 
-	// gen guards the session reader/waiter goroutines across restarts: only
-	// the generation matching the current session may close a.done.
-	gen atomic.Int64
+	// err holds the read error of whichever session exited with one; it is
+	// returned from Run after the last tab closes.
+	err atomic.Value
 
 	statusMu    sync.Mutex
 	statusMsg_  string
@@ -107,15 +115,11 @@ type App struct {
 	cfgMu sync.RWMutex
 
 	dirty         atomic.Bool
-	done          chan struct{}
-	doneOnce      sync.Once
 	once          sync.Once
 	screenCleared bool
 	screenCols    int
 	screenRows    int
 	r             *render.Renderer
-
-	err atomic.Value
 }
 
 // Run starts the application and blocks until it exits.
@@ -151,48 +155,45 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 	}
 	termRows := terminalRows(rows)
 
-	sess, err := pty.Spawn(cfg.General.Shell, cfg.General.ShellArgs, cols, termRows)
+	a := &App{
+		cfg:        cfg,
+		con:        con,
+		mods:       mode.NewManager(),
+		engine:     keybind.NewEngine(),
+		quit:       make(chan struct{}),
+		screenCols: cols,
+		screenRows: rows,
+		curBlink:   true,
+		lastInput:  time.Now(),
+		r:          render.New(),
+	}
+
+	t, err := a.spawnTab(cfg.General.Shell, cfg.General.ShellArgs, cols, termRows)
 	if err != nil {
 		con.Close()
 		return nil, err
 	}
 
-	emu := emulator.New(cols, termRows)
-	emu.SetScrollbackSize(cfg.General.Scrollback)
-
-	a := &App{
-		cfg:        cfg,
-		con:        con,
-		sess:       sess,
-		emu:        emu,
-		mods:       mode.NewManager(),
-		vp:         screen.New(termRows),
-		engine:     keybind.NewEngine(),
-		quit:       make(chan struct{}),
-		screenCols: cols,
-		screenRows: rows,
-		done:       make(chan struct{}),
-		curBlink:   true,
-		lastInput:  time.Now(),
-		r:          render.New(),
-	}
 	if fg, bg, ok := con.ThemeColors(); ok {
 		a.themeFg, a.themeBg, a.haveTheme = fg, bg, true
 	}
-	a.search = search.New(a.bufferLineCells)
 	a.macro = macro.New()
 	a.clipRead = clipboard.GetText
 	a.clipWrite = clipboard.SetText
 
+	// Materialize the first tab before applyConfig: it reads the active
+	// state (a.emu) and stores config-derived values on the tab.
+	a.tabs = []*tabState{t}
+	a.loadTab(0)
 	if err := a.applyConfig(cfg); err != nil {
 		con.Close()
-		sess.Kill()
-		sess.Close()
+		t.sess.Kill()
+		t.sess.Close()
 		return nil, err
 	}
 	a.actions = a.actionMap()
-	a.startReader()
-	a.startWaiter()
+	a.startReader(t)
+	a.startWaiter(t)
 
 	// Hot-reload the config.
 	if configPath != "" {
@@ -224,19 +225,29 @@ type session interface {
 	Wait(ctx context.Context) error
 }
 
-// closeDone signals the main loop that the session has ended or the app is
-// shutting down, exactly once.
-func (a *App) closeDone() {
-	a.doneOnce.Do(func() { close(a.done) })
+// spawnTab starts one shell session and builds its tab state around it.
+func (a *App) spawnTab(shell string, args []string, cols, rows int) (*tabState, error) {
+	sess, err := spawnShell(shell, args, cols, rows)
+	if err != nil {
+		return nil, err
+	}
+	emu := emulator.New(cols, rows)
+	emu.SetScrollbackSize(a.scrollbackSize())
+	t := newTabState(sess, emu, rows)
+	t.search = search.New(a.bufferLineCells)
+	t.cols, t.rows = cols, rows
+	t.sb = a.scrollbackSize()
+	return t, nil
 }
 
 // startReader pipes child output into the emulator. It captures the session
-// and generation at start; on EOF it only closes a.done if it still owns the
-// current generation (i.e. the session has not been restarted).
-func (a *App) startReader() {
-	sess := a.sess
-	emu := a.emu
-	gen := a.gen.Load()
+// and generation at start; on EOF it only closes the tab's done channel if
+// it still owns the current generation (i.e. the session has not been
+// restarted or the tab closed).
+func (a *App) startReader(t *tabState) {
+	sess := t.sess
+	emu := t.emu
+	gen := t.gen.Load()
 	go func() {
 		defer a.restoreOnPanic()
 		buf := make([]byte, 32*1024)
@@ -248,10 +259,10 @@ func (a *App) startReader() {
 			}
 			if err != nil {
 				if err != io.EOF {
-					a.err.Store(err)
+					t.err.Store(err)
 				}
-				if gen == a.gen.Load() {
-					a.closeDone()
+				if gen == t.gen.Load() {
+					t.doneOnce.Do(func() { close(t.done) })
 				}
 				return
 			}
@@ -270,14 +281,14 @@ func (a *App) restoreOnPanic() {
 }
 
 // startWaiter detects child process exit, honoring session generations.
-func (a *App) startWaiter() {
-	sess := a.sess
-	gen := a.gen.Load()
+func (a *App) startWaiter(t *tabState) {
+	sess := t.sess
+	gen := t.gen.Load()
 	go func() {
 		defer a.restoreOnPanic()
 		_ = sess.Wait(context.Background())
-		if gen == a.gen.Load() {
-			a.closeDone()
+		if gen == t.gen.Load() {
+			t.doneOnce.Do(func() { close(t.done) })
 		}
 	}()
 }
@@ -400,10 +411,7 @@ func (a *App) loop(ctx context.Context) error {
 			a.dirty.Store(true)
 
 		case <-a.quit:
-			return nil
-
-		case <-a.done:
-			if err, _ := a.err.Load().(error); err != nil {
+			if err := a.childError(); err != nil {
 				return fmt.Errorf("app: child read: %w", err)
 			}
 			return nil
@@ -412,6 +420,9 @@ func (a *App) loop(ctx context.Context) error {
 			return nil
 
 		case <-tick:
+			// Reap tabs whose session ended. Closing the last tab quits
+			// the app; a read error is surfaced through the quit path.
+			a.reapTabs()
 			// Cursor blink: once idle, alternate the virtual cursor's
 			// visibility on the blink cadence. Any input resets it to solid.
 			if want := cursorBlinkPhase(time.Now(), a.lastInput); want != a.curBlink {
@@ -641,7 +652,8 @@ func (a *App) renderFrame(frame *render.Frame) {
 
 	if !a.altScreen || a.prompt != nil {
 		fg, bg := a.statusStyle()
-		statusLine(frame.Cells[frame.Rows-1], a.mods.Current(), a.statusText(), a.sess.Name(), cx, cy, fg, bg)
+		labels, active := tabLabels(a.tabs, a.active)
+		statusLine(frame.Cells[frame.Rows-1], a.mods.Current(), a.statusText(), a.sess.Name(), cx, cy, fg, bg, labels, active)
 	} else if msg := a.statusMsg(); msg != "" && a.vp.Offset() == 0 &&
 		mergeAllowed(frame.Cells[frame.Rows-1], a.statusMergeMode()) {
 		// Full-screen app at the bottom of its screen: overlay the transient
@@ -666,14 +678,25 @@ func (a *App) resize(cols, rows int) {
 	}
 }
 
-// applyChildRows resizes the child session, emulator and viewport to the
-// height the child gets: full height inside an alternate screen (status
-// merging), one row less otherwise (the status line).
+// applyChildRows resizes the active child session, emulator and viewport to
+// the height the child gets: full height inside an alternate screen (status
+// merging), one row less otherwise (the status line). It also catches the
+// active tab up on scrollback changes that happened while it was in the
+// background. Runs on the main loop goroutine only.
 func (a *App) applyChildRows(cols, rows int) {
 	termRows := a.childRows(rows)
+	t := a.tabs[a.active]
+	if want := a.scrollbackSize(); t.sb != want {
+		a.emu.SetScrollbackSize(want)
+		t.sb = want
+	}
+	if t.cols == cols && t.rows == termRows {
+		return
+	}
 	_ = a.sess.Resize(cols, termRows)
 	a.emu.Resize(cols, termRows)
 	a.vp.SetRows(termRows)
+	t.cols, t.rows = cols, termRows
 }
 
 // childRows returns the child's terminal height for a host of the given
@@ -720,13 +743,14 @@ func (a *App) statusMsg() string {
 
 func (a *App) cleanup() {
 	a.once.Do(func() {
-		a.closeDone()
 		if a.stopWatch != nil {
 			a.stopWatch()
 		}
-		if a.sess != nil {
-			_ = a.sess.Kill()
-			_ = a.sess.Close()
+		for _, t := range a.tabs {
+			if t.sess != nil {
+				_ = t.sess.Kill()
+				_ = t.sess.Close()
+			}
 		}
 		if a.con != nil {
 			a.con.Close()
@@ -872,25 +896,34 @@ func (a *App) moveCursorTo(absLine, col int) {
 	a.dirty.Store(true)
 }
 
-// restartShell spawns a fresh shell session in a new emulator, keeping the
-// current viewport and config.
+// restartShell spawns a fresh shell session in a new emulator for the
+// active tab, keeping the current viewport and config.
 func (a *App) restartShell() {
 	cols, termRows := a.screenCols, terminalRows(a.screenRows)
 	shell, shellArgs := a.shellCommand()
-	sess, err := pty.Spawn(shell, shellArgs, cols, termRows)
+	sess, err := spawnShell(shell, shellArgs, cols, termRows)
 	if err != nil {
 		a.setStatusMsg("shell: " + err.Error())
 		return
 	}
-	a.gen.Add(1)
-	old := a.sess
+	t := a.tabs[a.active]
+	t.gen.Add(1)
+	old := t.sess
 	a.sess = sess
 	a.emu = emulator.New(cols, termRows)
 	a.emu.SetScrollbackSize(a.scrollbackSize())
 	a.vp.GotoBottom()
 	a.search.Clear()
-	a.startReader()
-	a.startWaiter()
+	a.curValid = false
+	a.sel.Cancel()
+	a.altScreen = false
+	t.sess = sess
+	t.emu = a.emu
+	t.cols, t.rows = cols, termRows
+	t.sb = a.scrollbackSize()
+	t.search = a.search
+	a.startReader(t)
+	a.startWaiter(t)
 	go func() {
 		_ = old.Kill()
 		_ = old.Close()

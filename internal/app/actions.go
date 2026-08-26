@@ -55,7 +55,21 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionDeleteWordBack:   func() { a.deleteWord(-1) },
 		keybind.ActionYankLine:         a.yankLine,
 		keybind.ActionQuit:             a.requestQuit,
+		keybind.ActionNextTab:          func() { a.countTab(1) },
+		keybind.ActionPrevTab:          func() { a.countTab(-1) },
 	}
+}
+
+// countTab handles gt/gT: with a count it jumps to that 1-based tab,
+// otherwise it cycles in the given direction.
+func (a *App) countTab(dir int) {
+	hasCount := a.cnt > 0
+	n := a.takeCount()
+	if hasCount {
+		a.activateIndex(n)
+		return
+	}
+	a.activateCycle(dir)
 }
 
 // countScroll handles Ctrl+U/D: with a count it moves that many lines,

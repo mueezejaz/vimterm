@@ -10,7 +10,7 @@ import (
 
 func TestStatusLine(t *testing.T) {
 	row := make([]emulator.Cell, 40)
-	statusLine(row, mode.ModeInsert, "", "powershell.exe", 5, 12, defaultStatusFg, defaultStatusBg)
+	statusLine(row, mode.ModeInsert, "", "powershell.exe", 5, 12, defaultStatusFg, defaultStatusBg, nil, 0)
 
 	var sb strings.Builder
 	for _, c := range row {
@@ -35,7 +35,7 @@ func TestStatusLineCustomColors(t *testing.T) {
 	row := make([]emulator.Cell, 10)
 	fg := emulator.Color{R: 1, G: 2, B: 3}
 	bg := emulator.Color{R: 4, G: 5, B: 6}
-	statusLine(row, mode.ModeNormal, "", "cmd.exe", 0, 0, fg, bg)
+	statusLine(row, mode.ModeNormal, "", "cmd.exe", 0, 0, fg, bg, nil, 0)
 	for _, c := range row {
 		if c.Fg != fg || c.Bg != bg {
 			t.Errorf("cell has fg %+v bg %+v, want custom colors", c.Fg, c.Bg)
@@ -45,7 +45,7 @@ func TestStatusLineCustomColors(t *testing.T) {
 
 func TestStatusLineNormal(t *testing.T) {
 	row := make([]emulator.Cell, 10)
-	statusLine(row, mode.ModeNormal, "", "cmd.exe", 0, 0, defaultStatusFg, defaultStatusBg)
+	statusLine(row, mode.ModeNormal, "", "cmd.exe", 0, 0, defaultStatusFg, defaultStatusBg, nil, 0)
 	if row[1].Content != "N" {
 		t.Errorf("expected NORMAL indicator, got %q", row[1].Content)
 	}
@@ -53,7 +53,7 @@ func TestStatusLineNormal(t *testing.T) {
 
 func TestStatusLineMessage(t *testing.T) {
 	row := make([]emulator.Cell, 60)
-	statusLine(row, mode.ModeNormal, "config reloaded", "cmd.exe", 0, 0, defaultStatusFg, defaultStatusBg)
+	statusLine(row, mode.ModeNormal, "config reloaded", "cmd.exe", 0, 0, defaultStatusFg, defaultStatusBg, nil, 0)
 	if row[8].Content != "c" {
 		t.Errorf("message text missing after mode: %q", row[8].Content)
 	}
@@ -62,7 +62,7 @@ func TestStatusLineMessage(t *testing.T) {
 func TestStatusLineUnicodeMessage(t *testing.T) {
 	row := make([]emulator.Cell, 60)
 	msg := "find: no 'é' forward"
-	statusLine(row, mode.ModeNormal, msg, "cmd.exe", 0, 0, defaultStatusFg, defaultStatusBg)
+	statusLine(row, mode.ModeNormal, msg, "cmd.exe", 0, 0, defaultStatusFg, defaultStatusBg, nil, 0)
 
 	var sb strings.Builder
 	for _, c := range row {
@@ -96,7 +96,7 @@ func TestStatusLineNarrowNoPanic(t *testing.T) {
 	}()
 	for cols := 1; cols < len(" NORMAL "); cols++ {
 		row := make([]emulator.Cell, cols)
-		statusLine(row, mode.ModeNormal, "", "powershell.exe", 3, 1, defaultStatusFg, defaultStatusBg)
+		statusLine(row, mode.ModeNormal, "", "powershell.exe", 3, 1, defaultStatusFg, defaultStatusBg, nil, 0)
 	}
 }
 
@@ -108,7 +108,7 @@ func TestStatusLineNarrowWithMessageNoPanic(t *testing.T) {
 	}()
 	for cols := 1; cols < len(" NORMAL ")+len("long transient message"); cols++ {
 		row := make([]emulator.Cell, cols)
-		statusLine(row, mode.ModeNormal, "long transient message", "powershell.exe", 3, 1, defaultStatusFg, defaultStatusBg)
+		statusLine(row, mode.ModeNormal, "long transient message", "powershell.exe", 3, 1, defaultStatusFg, defaultStatusBg, nil, 0)
 	}
 }
 
