@@ -49,6 +49,7 @@ const (
 	ActionQuit             Action = "quit"
 	ActionNextTab          Action = "next_tab"
 	ActionPrevTab          Action = "prev_tab"
+	ActionTabPopup         Action = "tab_search"
 )
 
 // AllActions lists every action the application understands. Config bindings
@@ -98,6 +99,7 @@ var AllActions = []Action{
 	ActionQuit,
 	ActionNextTab,
 	ActionPrevTab,
+	ActionTabPopup,
 }
 
 // IsKnownAction reports whether a is a recognized action name.

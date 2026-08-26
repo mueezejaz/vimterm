@@ -61,6 +61,7 @@ var nonRepeatable = map[keybind.Action]bool{
 	keybind.ActionQuit:             true,
 	keybind.ActionNextTab:          true,
 	keybind.ActionPrevTab:          true,
+	keybind.ActionTabPopup:         true,
 }
 
 // repeatTracker remembers the last repeatable unit and the current insert

@@ -661,6 +661,9 @@ func (a *App) renderFrame(frame *render.Frame) {
 		fg, bg := a.statusStyle()
 		overlayStatusMessage(frame.Cells[frame.Rows-1], a.mods.Current(), msg, fg, bg)
 	}
+	if a.prompt != nil && a.prompt.kind == promptTabs {
+		a.drawTabPopup(frame)
+	}
 	a.r.Draw(a.con, frame)
 }
 
