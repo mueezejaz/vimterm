@@ -167,6 +167,7 @@ func (a *App) closeTab(i int) {
 	t.gen.Add(1) // silence this tab's reader/waiter goroutines
 	sess := t.sess
 	go func() {
+		defer a.restoreOnPanic()
 		_ = sess.Kill()
 		_ = sess.Close()
 	}()

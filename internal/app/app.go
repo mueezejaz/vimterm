@@ -258,10 +258,14 @@ func (a *App) startReader(t *tabState) {
 				a.dirty.Store(true)
 			}
 			if err != nil {
-				if err != io.EOF {
-					t.err.Store(err)
-				}
+				// Only a reader of the current generation may record the
+				// error or close done: a superseded session's teardown
+				// error (Kill/Close always break its pipe) must neither
+				// poison t.err nor signal this tab's exit.
 				if gen == t.gen.Load() {
+					if err != io.EOF {
+						t.err.Store(err)
+					}
 					t.doneOnce.Do(func() { close(t.done) })
 				}
 				return
@@ -919,6 +923,7 @@ func (a *App) restartShell() {
 	}
 	t := a.tabs[a.active]
 	t.gen.Add(1)
+	t.err = atomic.Value{} // drop the old session's read error, if any
 	old := t.sess
 	a.sess = sess
 	a.emu = emulator.New(cols, termRows)
@@ -936,6 +941,7 @@ func (a *App) restartShell() {
 	a.startReader(t)
 	a.startWaiter(t)
 	go func() {
+		defer a.restoreOnPanic()
 		_ = old.Kill()
 		_ = old.Close()
 	}()
