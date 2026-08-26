@@ -194,7 +194,8 @@ func (a *App) clampCursor() {
 	if a.cur.Line < 0 {
 		a.cur.Line = 0
 	}
-	if max := a.emu.ScrollbackLen() + a.emu.Height() - 1; a.cur.Line > max {
+	sbLen := a.emu.ScrollbackLen()
+	if max := sbLen + a.emu.Height() - 1; a.cur.Line > max {
 		a.cur.Line = max
 	}
 	if a.cur.Col < 0 {
@@ -202,6 +203,24 @@ func (a *App) clampCursor() {
 	}
 	if max := a.emu.Width() - 1; a.cur.Col > max {
 		a.cur.Col = max
+	}
+	// A wide character's continuation cell (Width 0) is not a real cursor
+	// position: styling it highlights only the right half of the glyph and
+	// the renderer would redraw from mid-glyph. Snap to the lead cell.
+	if a.cur.Col == 0 {
+		return
+	}
+	var c emulator.Cell
+	switch y := a.cur.Line - sbLen; {
+	case y >= 0:
+		c = a.emu.Cell(a.cur.Col, y)
+	case a.cur.Line >= 0:
+		c = a.emu.ScrollbackCell(a.cur.Col, a.cur.Line)
+	default:
+		return
+	}
+	if c.Width == 0 {
+		a.cur.Col--
 	}
 }
 

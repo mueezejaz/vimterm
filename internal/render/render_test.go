@@ -228,3 +228,32 @@ func TestRendererFullRedrawOnResize(t *testing.T) {
 		t.Errorf("new row content missing: %q", out)
 	}
 }
+
+
+// A change landing first on a wide character's continuation cell used to
+// start the redraw mid-glyph: the placeholder itself is skipped (so a
+// cursor/selection change on the right half emitted nothing at all), and
+// any later writes landed one column short. The diff must back up to the
+// lead cell and re-emit the glyph.
+func TestRendererDiffOnContinuationCell(t *testing.T) {
+	r := New()
+	f := NewFrame(8, 1)
+	f.Cells[0][0] = emulator.Cell{Content: "中", Width: 2}
+	f.Cells[0][1] = emulator.Cell{Width: 0}
+
+	var sb strings.Builder
+	r.Draw(&sb, f)
+
+	sb.Reset()
+	// Only the continuation half changes.
+	f.Cells[0][1].Reverse = true
+	r.Draw(&sb, f)
+	out := sb.String()
+
+	if !strings.Contains(out, "\x1b[1;1H") {
+		t.Fatalf("redraw must start at the lead cell (column 1): %q", out)
+	}
+	if !strings.Contains(out, "中") {
+		t.Fatalf("lead glyph must be re-emitted so the row stays aligned: %q", out)
+	}
+}

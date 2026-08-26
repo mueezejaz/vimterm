@@ -112,3 +112,22 @@ func TestYankSelectionWideChars(t *testing.T) {
 		t.Fatalf("yank = %q, want 你ab", text)
 	}
 }
+
+func TestClampCursorSnapsOffContinuationCell(t *testing.T) {
+	// Cells: 你(0-1) x(2). A click or motion that leaves the cursor on the
+	// continuation cell (col 1) must snap back to the lead cell, or the
+	// cursor block highlights half a glyph and the renderer redraws from
+	// mid-glyph.
+	a := wideApp(t, "你x\r\n")
+	a.cur = selection.Pos{Line: 0, Col: 1}
+	a.clampCursor()
+	if a.cur.Col != 0 {
+		t.Fatalf("cursor col = %d, want lead cell 0", a.cur.Col)
+	}
+	// Narrow cells are left alone.
+	a.cur.Col = 2
+	a.clampCursor()
+	if a.cur.Col != 2 {
+		t.Fatalf("cursor col = %d, want 2", a.cur.Col)
+	}
+}

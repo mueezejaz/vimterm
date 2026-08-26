@@ -93,6 +93,13 @@ func (r *Renderer) Draw(w io.Writer, f *Frame) {
 			if from < 0 {
 				continue
 			}
+			// A diff first showing on a wide character's continuation cell
+			// must not start the redraw mid-glyph: the placeholder itself is
+			// skipped, so the host cursor would sit inside the glyph and
+			// every later write lands one column short. Back up to the lead.
+			for from > 0 && row[from].Width == 0 {
+				from--
+			}
 		}
 		drawRow(&sb, row, old, oldDrawn, y, from, f.Cols)
 	}
