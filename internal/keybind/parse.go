@@ -109,8 +109,13 @@ func parseChunk(chunk string, mods Mods, leader Key) ([]Key, error) {
 	var seq []Key
 	for _, r := range chunk {
 		runeMods := mods
-		if unicode.IsUpper(r) || shiftedPunct[r] {
+		if unicode.IsUpper(r) && mods == 0 {
 			runeMods |= ModShift
+		} else if shiftedPunct[r] && mods == 0 {
+			runeMods |= ModShift
+		}
+		if mods != 0 && unicode.IsLetter(r) {
+			r = unicode.ToLower(r)
 		}
 		seq = append(seq, Key{Code: CodeRune, Rune: r, Mods: runeMods})
 	}
