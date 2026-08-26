@@ -49,6 +49,7 @@ const (
 	ActionQuit             Action = "quit"
 	ActionNextTab          Action = "next_tab"
 	ActionPrevTab          Action = "prev_tab"
+	ActionNewTab           Action = "new_tab"
 	ActionTabPopup         Action = "tab_search"
 )
 
@@ -99,6 +100,7 @@ var AllActions = []Action{
 	ActionQuit,
 	ActionNextTab,
 	ActionPrevTab,
+	ActionNewTab,
 	ActionTabPopup,
 }
 

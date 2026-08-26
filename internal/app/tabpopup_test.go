@@ -15,12 +15,12 @@ func openPopup(t *testing.T, a *App) {
 	}
 }
 
-func TestTabPopupOpensViaLeaderGt(t *testing.T) {
+func TestTabPopupOpensViaLeaderTT(t *testing.T) {
 	a := newTabTestApp(t, 2)
 	pressKeys(t, a, " ")
-	pressKeys(t, a, "gt")
+	pressKeys(t, a, "tt")
 	if a.prompt == nil || a.prompt.kind != promptTabs {
-		t.Fatal("leader+gt did not open the tab popup")
+		t.Fatal("leader+tt did not open the tab popup")
 	}
 	if got := a.prompt.display(); got != "tabs>" {
 		t.Fatalf("display = %q, want tabs>", got)

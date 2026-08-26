@@ -264,6 +264,20 @@ func TestNewTabFakeSpawn(t *testing.T) {
 	}
 }
 
+func TestNewTabViaLeaderNt(t *testing.T) {
+	old := spawnShell
+	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+		return &fakeSession{}, nil
+	}
+	defer func() { spawnShell = old }()
+	a := newTabTestApp(t, 1)
+	pressKeys(t, a, " ")
+	pressKeys(t, a, "nt")
+	if len(a.tabs) != 2 || a.active != 1 {
+		t.Fatalf("leader+nt: tabs=%d active=%d", len(a.tabs), a.active)
+	}
+}
+
 // eofSession ends immediately: its reader closes the tab's done channel on
 // the first Read, so reaping removes the tab only if a reader was started.
 type eofSession struct{}

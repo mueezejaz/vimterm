@@ -126,7 +126,8 @@ func defaultNormalBindings() map[string]string {
 		"E":         "move_word_end_upper",
 		"gt":        "next_tab",
 		"gT":        "prev_tab",
-		"leader+gt": "tab_search",
+		"leader+nt": "new_tab",
+		"leader+tt": "tab_search",
 		"ctrl+q":    "quit",
 	}
 }
@@ -350,7 +351,8 @@ status_bg = ""
 "E" = "move_word_end_upper"
 "gt" = "next_tab"
 "gT" = "prev_tab"
-"leader+gt" = "tab_search"
+"leader+nt" = "new_tab"
+"leader+tt" = "tab_search"
 "ctrl+q" = "quit"
 
 [keybindings.insert]
