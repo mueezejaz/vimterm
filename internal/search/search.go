@@ -4,6 +4,7 @@ package search
 
 import (
 	"strings"
+	"unicode"
 
 	"vimterm/internal/emulator"
 )
@@ -182,16 +183,15 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int) {
 func lower(r []rune) []rune {
 	out := make([]rune, len(r))
 	for i, x := range r {
-		out[i] = toLower(x)
+		out[i] = unicode.ToLower(x)
 	}
 	return out
 }
 
+// toLower is kept for callers that need a single rune; it delegates to the
+// standard library for correct Unicode case folding.
 func toLower(r rune) rune {
-	if r >= 'A' && r <= 'Z' {
-		return r + ('a' - 'A')
-	}
-	return r
+	return unicode.ToLower(r)
 }
 
 // index returns the index of needle in haystack, or -1.
