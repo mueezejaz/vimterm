@@ -18,10 +18,7 @@ func (a *App) yankLine() {
 			break
 		}
 		text := strings.TrimRight(string(line), " ")
-		if text == "" {
-			continue
-		}
-		if sb.Len() > 0 {
+		if i > 0 {
 			sb.WriteByte('\n')
 		}
 		sb.WriteString(text)

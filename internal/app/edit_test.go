@@ -103,6 +103,26 @@ func TestYankLineCount(t *testing.T) {
 	}
 }
 
+func TestYankLinePreservesBlankLines(t *testing.T) {
+	a, clip := editApp(t, "a\r\n\r\nb\r\n")
+	for _, k := range []rune{'3', 'y', 'y'} {
+		press(t, a, keybind.NewRune(k, 0))
+	}
+	if got := clip.String(); got != "a\n\nb" {
+		t.Fatalf("3yy with blank line: clipboard = %q, want %q", got, "a\n\nb")
+	}
+}
+
+func TestYankLineSingleBlankLine(t *testing.T) {
+	a, clip := editApp(t, "\r\nsecond\r\n")
+	// Move to line 0 (blank line) and yank it.
+	press(t, a, keybind.NewRune('y', 0))
+	press(t, a, keybind.NewRune('y', 0))
+	if got := clip.String(); got != "" {
+		t.Fatalf("yy blank line: clipboard = %q, want empty", got)
+	}
+}
+
 func TestDeleteWordForward(t *testing.T) {
 	a, clip := editApp(t, "foo bar baz\r\n")
 	press(t, a, keybind.NewRune('d', 0))
