@@ -83,6 +83,22 @@ func TestKeyToBytes(t *testing.T) {
 		{"f1", keybind.NewCode(keybind.CodeF1, 0), []byte("\x1bOP")},
 		{"f5", keybind.NewCode(keybind.CodeF5, 0), []byte("\x1b[15~")},
 		{"f12", keybind.NewCode(keybind.CodeF12, 0), []byte("\x1b[24~")},
+		// Modifiers must survive the trip to the child (they used to be
+		// dropped, so Alt+word motions and Shift+arrows arrived unmodified).
+		{"alt+b", keybind.NewRune('b', keybind.ModAlt), []byte("\x1bb")},
+		{"alt+shift+b", keybind.NewRune('B', keybind.ModAlt | keybind.ModShift), []byte("\x1bB")},
+		{"ctrl+alt+a", keybind.NewRune('a', keybind.ModCtrl | keybind.ModAlt), []byte{0x1B, 0x01}},
+		{"shift+tab", keybind.NewCode(keybind.CodeTab, keybind.ModShift), []byte("\x1b[Z")},
+		{"alt+tab", keybind.NewCode(keybind.CodeTab, keybind.ModAlt), []byte("\x1b\t")},
+		{"shift+up", keybind.NewCode(keybind.CodeUp, keybind.ModShift), []byte("\x1b[1;2A")},
+		{"ctrl+left", keybind.NewCode(keybind.CodeLeft, keybind.ModCtrl), []byte("\x1b[1;5D")},
+		{"shift+end", keybind.NewCode(keybind.CodeEnd, keybind.ModShift), []byte("\x1b[1;2F")},
+		{"ctrl+shift+home", keybind.NewCode(keybind.CodeHome, keybind.ModCtrl | keybind.ModShift), []byte("\x1b[1;6H")},
+		{"shift+delete", keybind.NewCode(keybind.CodeDelete, keybind.ModShift), []byte("\x1b[3;2~")},
+		{"alt+f1", keybind.NewCode(keybind.CodeF1, keybind.ModAlt), []byte("\x1b[1;3P")},
+		{"shift+f5", keybind.NewCode(keybind.CodeF5, keybind.ModShift), []byte("\x1b[15;2~")},
+		{"alt+enter", keybind.NewCode(keybind.CodeEnter, keybind.ModAlt), []byte("\x1b\r")},
+		{"alt+backspace", keybind.NewCode(keybind.CodeBackspace, keybind.ModAlt), []byte{0x1B, 0x7F}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

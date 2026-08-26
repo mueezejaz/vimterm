@@ -1,6 +1,10 @@
 package console
 
-import "vimterm/internal/keybind"
+import (
+	"strconv"
+
+	"vimterm/internal/keybind"
+)
 
 // dwControlKeyState bits.
 const (
@@ -139,68 +143,128 @@ func modsFromState(state uint32) keybind.Mods {
 }
 
 // KeyToBytes converts a Key back into the byte sequence that should be sent
-// to a child process through the PTY, using VT input conventions.
+// to a child process through the PTY, using VT input conventions. Modifier
+// combinations use the standard xterm encodings: an ESC prefix for Alt, and
+// CSI modifier parameters (1 = shift, +2 = alt, +4 = ctrl) for special
+// keys, so e.g. Shift+End reaches PSReadLine as \x1b[1;2F instead of a
+// plain End.
 func KeyToBytes(k keybind.Key) []byte {
 	if k.Code == keybind.CodeRune {
 		r := k.Rune
+		var out []byte
+		if k.Mods&keybind.ModAlt != 0 {
+			out = append(out, 0x1B)
+		}
 		switch {
 		case k.Mods&keybind.ModCtrl != 0 && r >= 'a' && r <= 'z':
-			return []byte{byte(r - 'a' + 1)}
+			out = append(out, byte(r-'a'+1))
 		case k.Mods&keybind.ModCtrl != 0 && r == ' ':
-			return []byte{0x00}
+			out = append(out, 0x00)
 		case k.Mods&keybind.ModCtrl != 0 && r == '[':
-			return []byte{0x1B}
+			out = append(out, 0x1B)
 		case k.Mods&keybind.ModCtrl != 0 && r == '\\':
-			return []byte{0x1C}
+			out = append(out, 0x1C)
 		case k.Mods&keybind.ModCtrl != 0 && r == ']':
-			return []byte{0x1D}
+			out = append(out, 0x1D)
 		case k.Mods&keybind.ModCtrl != 0 && r == '^':
-			return []byte{0x1E}
+			out = append(out, 0x1E)
 		case k.Mods&keybind.ModCtrl != 0 && r == '_':
-			return []byte{0x1F}
+			out = append(out, 0x1F)
+		default:
+			out = append(out, []byte(string(r))...)
 		}
-		return []byte(string(r))
+		return out
 	}
 
+	m := modParam(k)
 	switch k.Code {
 	case keybind.CodeEnter:
-		return []byte("\r")
+		return altPrefixed("\r", k)
 	case keybind.CodeBackspace:
 		// DEL (0x7F), not BS (0x08): ConPTY delivers 0x08 to the child as
 		// Ctrl+Backspace (delete word), whereas 0x7F maps to a plain
 		// backspace that deletes one character.
-		return []byte{0x7F}
+		return altPrefixed("\x7f", k)
 	case keybind.CodeTab:
-		return []byte("\t")
+		switch {
+		case m == 2: // Shift only: backtab
+			return []byte("\x1b[Z")
+		default:
+			return altPrefixed("\t", k)
+		}
 	case keybind.CodeEsc:
-		return []byte{0x1B}
-	case keybind.CodeLeft:
-		return []byte("\x1b[D")
-	case keybind.CodeRight:
-		return []byte("\x1b[C")
-	case keybind.CodeUp:
-		return []byte("\x1b[A")
-	case keybind.CodeDown:
-		return []byte("\x1b[B")
-	case keybind.CodeHome:
-		return []byte("\x1b[H")
-	case keybind.CodeEnd:
-		return []byte("\x1b[F")
-	case keybind.CodePageUp:
-		return []byte("\x1b[5~")
-	case keybind.CodePageDown:
-		return []byte("\x1b[6~")
-	case keybind.CodeInsert:
-		return []byte("\x1b[2~")
-	case keybind.CodeDelete:
-		return []byte("\x1b[3~")
+		return altPrefixed("\x1b", k)
+	case keybind.CodeLeft, keybind.CodeRight, keybind.CodeUp, keybind.CodeDown,
+		keybind.CodeHome, keybind.CodeEnd:
+		final := map[keybind.Code]byte{
+			keybind.CodeLeft: 'D', keybind.CodeRight: 'C', keybind.CodeUp: 'A',
+			keybind.CodeDown: 'B', keybind.CodeHome: 'H', keybind.CodeEnd: 'F',
+		}[k.Code]
+		if m > 0 {
+			return csiParam(1, m, final)
+		}
+		return []byte{'\x1b', '[', final}
+	case keybind.CodeInsert, keybind.CodeDelete, keybind.CodePageUp, keybind.CodePageDown:
+		n := map[keybind.Code]int{
+			keybind.CodeInsert: 2, keybind.CodeDelete: 3,
+			keybind.CodePageUp: 5, keybind.CodePageDown: 6,
+		}[k.Code]
+		if m > 0 {
+			return csiTilde(n, m)
+		}
+		return []byte("\x1b[" + strconv.Itoa(n) + "~")
 	case keybind.CodeF1, keybind.CodeF2, keybind.CodeF3, keybind.CodeF4:
-		return []byte{0x1B, 'O', byte('P' + k.Code - keybind.CodeF1)}
+		final := byte('P' + k.Code - keybind.CodeF1)
+		if m > 0 {
+			return csiParam(1, m, final)
+		}
+		return []byte{0x1B, 'O', final}
 	case keybind.CodeF5, keybind.CodeF6, keybind.CodeF7, keybind.CodeF8,
 		keybind.CodeF9, keybind.CodeF10, keybind.CodeF11, keybind.CodeF12:
-		params := [...]byte{15, 17, 18, 19, 20, 21, 23, 24}
+		params := [...]int{15, 17, 18, 19, 20, 21, 23, 24}
 		p := params[k.Code-keybind.CodeF5]
-		return []byte{0x1B, '[', '0' + p/10, '0' + p%10, '~'}
+		if m > 0 {
+			return csiTilde(p, m)
+		}
+		s := strconv.Itoa(p)
+		return []byte("\x1b[" + s + "~")
 	}
 	return nil
+}
+
+// modParam returns the xterm CSI modifier parameter for a key's modifiers
+// (shift=1, alt=2, ctrl=4 added to a base of 1), or 0 when unmodified.
+func modParam(k keybind.Key) int {
+	if k.Mods == 0 {
+		return 0
+	}
+	m := 1
+	if k.Mods&keybind.ModShift != 0 {
+		m += 1
+	}
+	if k.Mods&keybind.ModAlt != 0 {
+		m += 2
+	}
+	if k.Mods&keybind.ModCtrl != 0 {
+		m += 4
+	}
+	return m
+}
+
+// altPrefixed prefixes b with ESC when the key carries Alt.
+func altPrefixed(s string, k keybind.Key) []byte {
+	if k.Mods&keybind.ModAlt == 0 {
+		return []byte(s)
+	}
+	return append([]byte{0x1B}, s...)
+}
+
+// csiParam builds \x1b[<p>;<m><final>.
+func csiParam(p, m int, final byte) []byte {
+	return []byte("\x1b[" + strconv.Itoa(p) + ";" + strconv.Itoa(m) + string(final))
+}
+
+// csiTilde builds \x1b[<n>;<m>~.
+func csiTilde(n, m int) []byte {
+	return []byte("\x1b[" + strconv.Itoa(n) + ";" + strconv.Itoa(m) + "~")
 }
