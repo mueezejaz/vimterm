@@ -2,6 +2,7 @@ package pty
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/xpty"
+	"golang.org/x/sys/windows"
 )
 
 // Session wraps a ConPTY-backed child process (e.g. PowerShell, cmd, wsl).
@@ -58,7 +60,26 @@ func Spawn(program string, args []string, cols, rows int) (*Session, error) {
 
 // Read reads output from the child process.
 func (s *Session) Read(p []byte) (int, error) {
-	return s.pty.Read(p)
+	n, err := s.pty.Read(p)
+	return n, mapReadErr(err)
+}
+
+// mapReadErr translates pipe teardown errors into io.EOF: closing the
+// ConPTY surfaces to a blocked reader as ERROR_INVALID_HANDLE (the pipe
+// handles are gone) or, depending on teardown order, as ERROR_BROKEN_PIPE
+// or ERROR_NO_DATA from ReadFile — never as a clean EOF. A closed or dead
+// session has no retry path, so callers treat all three as the normal end
+// of the session's output.
+func mapReadErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, windows.ERROR_BROKEN_PIPE) ||
+		errors.Is(err, windows.ERROR_NO_DATA) ||
+		errors.Is(err, windows.ERROR_INVALID_HANDLE) {
+		return io.EOF
+	}
+	return err
 }
 
 // Write writes input to the child process.
