@@ -75,8 +75,11 @@ func newTabState(sess session, emu emulator.Emulator, rows int) *tabState {
 // store copies the active view state back into tabs[a.active].
 func (a *App) storeCurrent() {
 	t := a.tabs[a.active]
-	t.sess = a.sess
-	t.emu = a.emu
+	a.cfgMu.RLock()
+	sess, emu := a.sess, a.emu
+	a.cfgMu.RUnlock()
+	t.sess = sess
+	t.emu = emu
 	t.vp = a.vp
 	t.search = a.search
 	t.cur = a.cur
@@ -91,8 +94,7 @@ func (a *App) storeCurrent() {
 func (a *App) loadTab(i int) {
 	t := a.tabs[i]
 	a.active = i
-	a.sess = t.sess
-	a.emu = t.emu
+	a.setSessionMaterial(t.sess, t.emu)
 	a.vp = t.vp
 	a.search = t.search
 	a.cur = t.cur

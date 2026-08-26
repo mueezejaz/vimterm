@@ -299,9 +299,13 @@ func (a *App) startWaiter(t *tabState) {
 
 // applyConfig rebuilds the keymaps and runtime settings from a config. It
 // returns an error (leaving the app in its previous state) if the config is
-// invalid. It may run on the config-watcher goroutine, so the fields it
-// writes (cfg, statusFg, statusBg, cmdSeqs) are guarded by cfgMu and read
-// only through the accessors below.
+// invalid: every value is parsed and validated before any state is touched,
+// so a rejected reload cannot leave a half-applied hybrid behind. It may
+// run on the config-watcher goroutine, so the fields it writes (cfg,
+// statusFg, statusBg, cmdSeqs) are guarded by cfgMu and read only through
+// the accessors below; the a.emu reference it reads goes through
+// activeEmulator for the same reason (the main loop swaps it without any
+// other synchronization).
 func (a *App) applyConfig(cfg *config.Config) error {
 	leader, err := keybind.ParseLeader(cfg.General.Leader)
 	if err != nil {
@@ -318,9 +322,7 @@ func (a *App) applyConfig(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
-	a.engine.SetKeymaps(keymaps)
-	a.engine.SetTimeout(time.Duration(cfg.General.Timeoutlen) * time.Millisecond)
-	a.emu.SetScrollbackSize(cfg.General.Scrollback)
+	timeout := time.Duration(cfg.General.Timeoutlen) * time.Millisecond
 
 	// Custom commands: name -> key sequence.
 	seqs := make(map[string][]keybind.Key, len(cfg.Commands))
@@ -347,6 +349,11 @@ func (a *App) applyConfig(cfg *config.Config) error {
 	} else if cfg.Colors.StatusBg != "" {
 		return fmt.Errorf("config: colors: status_bg: invalid color %q", cfg.Colors.StatusBg)
 	}
+
+	// Everything validated: commit the new state.
+	a.engine.SetKeymaps(keymaps)
+	a.engine.SetTimeout(timeout)
+	activeEmulator(a).SetScrollbackSize(cfg.General.Scrollback)
 
 	a.cfgMu.Lock()
 	a.cmdSeqs = seqs
@@ -391,6 +398,23 @@ func (a *App) customCommand(name string) ([]keybind.Key, bool) {
 	defer a.cfgMu.RUnlock()
 	seq, ok := a.cmdSeqs[name]
 	return seq, ok
+}
+
+// activeEmulator returns the active tab's emulator reference. The main loop
+// swaps a.emu without any other synchronization, so the config watcher must
+// read it through this helper.
+func activeEmulator(a *App) emulator.Emulator {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.emu
+}
+
+// setSessionMaterial swaps the materialized session/emulator pair of the
+// active state under cfgMu, keeping the watcher's reads consistent.
+func (a *App) setSessionMaterial(sess session, emu emulator.Emulator) {
+	a.cfgMu.Lock()
+	a.sess, a.emu = sess, emu
+	a.cfgMu.Unlock()
 }
 
 func (a *App) loop(ctx context.Context) error {
@@ -925,16 +949,16 @@ func (a *App) restartShell() {
 	t.gen.Add(1)
 	t.err = atomic.Value{} // drop the old session's read error, if any
 	old := t.sess
-	a.sess = sess
-	a.emu = emulator.New(cols, termRows)
-	a.emu.SetScrollbackSize(a.scrollbackSize())
+	emu := emulator.New(cols, termRows)
+	emu.SetScrollbackSize(a.scrollbackSize())
+	a.setSessionMaterial(sess, emu)
 	a.vp.GotoBottom()
 	a.search.Clear()
 	a.curValid = false
 	a.sel.Cancel()
 	a.altScreen = false
 	t.sess = sess
-	t.emu = a.emu
+	t.emu = emu
 	t.cols, t.rows = cols, termRows
 	t.sb = a.scrollbackSize()
 	t.search = a.search
