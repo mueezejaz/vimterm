@@ -4,6 +4,7 @@ package clipboard
 
 import (
 	"syscall"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 )
@@ -11,6 +12,8 @@ import (
 const (
 	cfUnicodeText = 13
 	gmemMoveable  = 0x0002
+	clipRetries   = 3
+	clipDelay     = 10 * time.Millisecond
 )
 
 var (
@@ -29,13 +32,27 @@ var (
 	copyMem      = kernel32.NewProc("RtlMoveMemory")
 )
 
+// openClipboard opens the clipboard with a short retry loop. The clipboard
+// can be briefly locked by another process performing a paste or copy.
+func openClipboard() error {
+	var r uintptr
+	for i := 0; i < clipRetries; i++ {
+		r, _, _ = openClip.Call(0)
+		if r != 0 {
+			return nil
+		}
+		time.Sleep(clipDelay)
+	}
+	return syscall.GetLastError()
+}
+
 // SetText replaces the clipboard contents with the given Unicode text.
 func SetText(text string) error {
 	if text == "" {
 		text = "\r\n"
 	}
-	if r, _, _ := openClip.Call(0); r == 0 {
-		return syscall.GetLastError()
+	if err := openClipboard(); err != nil {
+		return err
 	}
 	defer func() { _, _, _ = closeClip.Call() }()
 
@@ -75,8 +92,8 @@ func SetText(text string) error {
 // GetText returns the current Unicode text from the clipboard, or an error
 // if the clipboard is empty or holds no text.
 func GetText() (string, error) {
-	if r, _, _ := openClip.Call(0); r == 0 {
-		return "", syscall.GetLastError()
+	if err := openClipboard(); err != nil {
+		return "", err
 	}
 	defer func() { _, _, _ = closeClip.Call() }()
 
