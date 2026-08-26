@@ -335,6 +335,25 @@ func TestStatusLineShowsTabs(t *testing.T) {
 	}
 }
 
+func TestStatusLineTabsCentered(t *testing.T) {
+	row := make([]emulator.Cell, 80)
+	statusLine(row, mode.ModeNormal, "", "pwsh.exe", 0, 0,
+		defaultStatusFg, defaultStatusBg, []string{"1:pwsh", "2:cmd"}, 0)
+	text := rowText(row)
+	// left " NORMAL " ends at 8; right " pwsh.exe  1,1 " starts at 65.
+	// Padded labels total 15 cells, so the block starts at 8+(57-15)/2=29
+	// and its leading padding space puts "1:pwsh" at column 30.
+	if got := strings.Index(text, "1:pwsh"); got != 30 {
+		t.Fatalf("tab label starts at %d, want 30 (centered): %q", got, text)
+	}
+	if row[28].Content != " " || row[44].Content != " " {
+		t.Fatal("expected padding gaps on both sides of the centered block")
+	}
+	if !strings.HasSuffix(text, " pwsh.exe  1,1 ") {
+		t.Fatalf("right side displaced: %q", text)
+	}
+}
+
 func TestStatusLineHidesTabsWhenSingle(t *testing.T) {
 	row := make([]emulator.Cell, 60)
 	statusLine(row, mode.ModeNormal, "", "cmd.exe", 0, 0,

@@ -56,29 +56,37 @@ func statusLine(row []emulator.Cell, m mode.Mode, msg, shell string, cx, cy int,
 	drawTabLabels(row, labels, active, len(leftRunes), rightStart, fg, bg)
 }
 
-// drawTabLabels writes the tab labels into the gap between the left text
-// (ending at leftEnd) and the right text (starting at rightStart). Labels
-// are dropped whole from the end when space runs out; the active tab's
-// label is drawn reversed. With fewer than two labels it draws nothing.
+// drawTabLabels writes the tab labels centered in the gap between the left
+// text (ending at leftEnd) and the right text (starting at rightStart).
+// Labels are dropped whole from the end when space runs out and the
+// remainder is centered in the leftover space; the active tab's label is
+// drawn reversed. With fewer than two labels it draws nothing.
 func drawTabLabels(row []emulator.Cell, labels []string, active, leftEnd, rightStart int, fg, bg emulator.Color) {
 	if len(labels) < 2 {
 		return
 	}
-	start := leftEnd
-	if room := rightStart - start; room < 6 {
+	if rightStart-leftEnd < 6 {
 		// Not enough room to show anything useful.
 		return
 	}
-	pos := start
+	// Drop trailing labels until the padded block fits between the left
+	// and right text.
+	total := 0
 	shown := 0
 	for i, l := range labels {
-		n := 1 + len([]rune(l)) + 1 // padding + label + padding
-		if pos+n > rightStart-1 {
+		w := 1 + len([]rune(l)) + 1 // padding + label + padding
+		if leftEnd+total+w > rightStart-1 {
 			break
 		}
+		total += w
+		shown = i + 1
+	}
+	start := leftEnd + (rightStart-leftEnd-total)/2
+	pos := start
+	for i := 0; i < shown; i++ {
 		row[pos] = statusCell(' ', fg, bg)
 		pos++
-		for _, r := range []rune(l) {
+		for _, r := range []rune(labels[i]) {
 			c := statusCell(r, fg, bg)
 			c.Reverse = i == active
 			row[pos] = c
@@ -86,7 +94,6 @@ func drawTabLabels(row []emulator.Cell, labels []string, active, leftEnd, rightS
 		}
 		row[pos] = statusCell(' ', fg, bg)
 		pos++
-		shown++
 	}
 }
 
