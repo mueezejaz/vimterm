@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -260,6 +262,42 @@ func TestNewTabFakeSpawn(t *testing.T) {
 	if a.sess != a.tabs[1].sess {
 		t.Fatal("focused session is not the newly spawned one")
 	}
+}
+
+// eofSession ends immediately: its reader closes the tab's done channel on
+// the first Read, so reaping removes the tab only if a reader was started.
+type eofSession struct{}
+
+func (eofSession) Write(p []byte) (int, error)    { return len(p), nil }
+func (eofSession) Read(p []byte) (int, error)     { return 0, io.EOF }
+func (eofSession) Resize(int, int) error          { return nil }
+func (eofSession) Kill() error                    { return nil }
+func (eofSession) Close() error                   { return nil }
+func (eofSession) Name() string                   { return "eof" }
+func (eofSession) Wait(ctx context.Context) error { return nil }
+
+func TestNewTabStartsReaderAndWaiter(t *testing.T) {
+	old := spawnShell
+	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+		return eofSession{}, nil
+	}
+	defer func() { spawnShell = old }()
+	a := newTabTestApp(t, 1)
+	a.newTab()
+	if len(a.tabs) != 2 {
+		t.Fatalf("tabs after :new = %d, want 2", len(a.tabs))
+	}
+	// The new tab's session is already dead (EOF); if its reader/waiter
+	// goroutines were started, reaping removes it again.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		a.reapTabs()
+		if len(a.tabs) == 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("new tab's reader/waiter never ran: exited session was not reaped")
 }
 
 func rowText(row []emulator.Cell) string {

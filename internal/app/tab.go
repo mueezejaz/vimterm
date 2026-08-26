@@ -120,6 +120,10 @@ func (a *App) newTab() {
 	}
 	a.tabs = append(a.tabs, t)
 	a.loadTab(len(a.tabs) - 1)
+	// Pipe the new session's output and detect its exit; without these the
+	// tab renders nothing and typed input is never echoed back.
+	a.startReader(t)
+	a.startWaiter(t)
 	a.setStatusMsg("tab " + itoa(len(a.tabs)))
 }
 
