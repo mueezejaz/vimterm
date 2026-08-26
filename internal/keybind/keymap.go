@@ -19,6 +19,7 @@ const (
 	ActionSearchNext       Action = "search_next"
 	ActionSearchPrev       Action = "search_prev"
 	ActionCommandPrompt    Action = "command_prompt"
+	ActionRenamePrompt     Action = "rename_prompt"
 	ActionEnterVisual      Action = "enter_visual"
 	ActionEnterVisLine     Action = "enter_visual_line"
 	ActionCancelVisual     Action = "cancel_visual"
@@ -70,6 +71,7 @@ var AllActions = []Action{
 	ActionSearchNext,
 	ActionSearchPrev,
 	ActionCommandPrompt,
+	ActionRenamePrompt,
 	ActionEnterVisual,
 	ActionEnterVisLine,
 	ActionCancelVisual,
@@ -116,9 +118,10 @@ func IsKnownAction(a Action) bool {
 
 // kmNode is a trie node keyed by Key.
 type kmNode struct {
-	children  map[Key]*kmNode
-	action    Action
-	hasAction bool
+	children map[Key]*kmNode
+	// actions holds the payload of a bound sequence: usually one action,
+	// more when the binding is a chain run in order.
+	actions []Action
 }
 
 // Keymap maps key sequences to actions for a single mode.
@@ -131,8 +134,10 @@ func NewKeymap() *Keymap {
 	return &Keymap{root: &kmNode{children: make(map[Key]*kmNode)}}
 }
 
-// Bind associates a sequence of keys with an action.
-func (km *Keymap) Bind(seq []Key, a Action) {
+// Bind associates a sequence of keys with one or more actions. When several
+// are given they form a chain: on a match the application runs each in
+// order. Binding the same sequence again replaces its previous actions.
+func (km *Keymap) Bind(seq []Key, as ...Action) {
 	n := km.root
 	for _, k := range seq {
 		child, ok := n.children[k]
@@ -142,24 +147,23 @@ func (km *Keymap) Bind(seq []Key, a Action) {
 		}
 		n = child
 	}
-	n.action = a
-	n.hasAction = true
+	n.actions = append([]Action(nil), as...)
 }
 
-// Lookup returns the action bound to the exact sequence, if any.
-func (km *Keymap) Lookup(seq []Key) (Action, bool) {
+// Lookup returns the actions bound to the exact sequence, if any.
+func (km *Keymap) Lookup(seq []Key) ([]Action, bool) {
 	n := km.root
 	for _, k := range seq {
 		child, ok := n.children[k]
 		if !ok {
-			return "", false
+			return nil, false
 		}
 		n = child
 	}
-	if !n.hasAction {
-		return "", false
+	if len(n.actions) == 0 {
+		return nil, false
 	}
-	return n.action, true
+	return n.actions, true
 }
 
 // IsPrefix reports whether seq is a prefix of at least one bound sequence.

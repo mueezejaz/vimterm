@@ -24,10 +24,11 @@ func newMotionApp(t *testing.T, cols, rows int, content string) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindings := map[string]map[string]string{
-		"normal": cfg.Keybindings.Normal,
-		"insert": cfg.Keybindings.Insert,
-		"visual": cfg.Keybindings.Visual,
+	tables := cfg.Keybindings.ActionTables()
+	bindings := map[string]map[string][]string{
+		"normal": tables["normal"],
+		"insert": tables["insert"],
+		"visual": tables["visual"],
 	}
 	keymaps, err := keybind.BuildKeymaps(bindings, leader)
 	if err != nil {

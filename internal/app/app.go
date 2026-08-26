@@ -303,11 +303,12 @@ func (a *App) applyConfig(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("config: leader: %w", err)
 	}
-	bindings := map[string]map[string]string{
-		modeName(mode.ModeNormal):     cfg.Keybindings.Normal,
-		modeName(mode.ModeInsert):     cfg.Keybindings.Insert,
-		modeName(mode.ModeVisual):     cfg.Keybindings.Visual,
-		modeName(mode.ModeVisualLine): cfg.Keybindings.Visual,
+	tables := cfg.Keybindings.ActionTables()
+	bindings := map[string]map[string][]string{
+		modeName(mode.ModeNormal):     tables["normal"],
+		modeName(mode.ModeInsert):     tables["insert"],
+		modeName(mode.ModeVisual):     tables["visual"],
+		modeName(mode.ModeVisualLine): tables["visual"],
 	}
 	keymaps, err := keybind.BuildKeymaps(bindings, leader)
 	if err != nil {
@@ -498,18 +499,25 @@ func (a *App) handleKey(k keybind.Key) {
 			}
 		}
 	}
-	res, action := a.engine.Feed(modeName(a.mods.Current()), k)
+	res, actions := a.engine.Feed(modeName(a.mods.Current()), k)
 	switch res {
 	case keybind.Matched:
-		a.tracker.noteAction(action, a.engine.LastSeq())
-		if fn, ok := a.actions[action]; ok {
-			if countAware[action] {
-				a.cnt = a.count
-				a.count = 0
-			} else {
-				a.count = 0
+		a.tracker.noteAction(actions[0], a.engine.LastSeq())
+		if countAware[actions[0]] {
+			a.cnt = a.count
+		}
+		a.count = 0
+		for _, act := range actions {
+			fn, ok := a.actions[act]
+			if !ok {
+				continue
 			}
 			fn()
+			// A prompt swallows every following key, so later chain steps
+			// must not run while it waits for input.
+			if a.prompt != nil {
+				break
+			}
 		}
 	case keybind.NoMatch:
 		// Unbound keys pass through only in insert mode; in normal mode they

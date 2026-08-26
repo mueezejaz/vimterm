@@ -34,7 +34,7 @@ var specialNames = map[string]Code{
 var shiftedPunct = map[rune]bool{
 	'~': true, '!': true, '@': true, '#': true, '$': true, '%': true,
 	'^': true, '&': true, '*': true, '(': true, ')': true, '_': true,
-	'+': true, '{': true, '}': true, '|': true, ':' : true, '"': true,
+	'+': true, '{': true, '}': true, '|': true, ':': true, '"': true,
 	'<': true, '>': true, '?': true,
 }
 
@@ -131,9 +131,11 @@ func ParseLeader(s string) (Key, error) {
 }
 
 // BuildKeymaps builds one keymap per mode from a config-style map of binding
-// tokens to action names. It rejects unknown actions and unparseable tokens.
-// Duplicate sequences are allowed: later entries (in sorted order) win.
-func BuildKeymaps(bindings map[string]map[string]string, leader Key) (map[string]*Keymap, error) {
+// tokens to action-name chains. A chain usually holds one name; several run
+// in order on a match. It rejects unknown actions, empty chains and
+// unparseable tokens. Duplicate sequences are allowed: later entries (in
+// sorted order) win.
+func BuildKeymaps(bindings map[string]map[string][]string, leader Key) (map[string]*Keymap, error) {
 	keymaps := make(map[string]*Keymap)
 	names := make([]string, 0, len(bindings))
 	for name := range bindings {
@@ -151,15 +153,23 @@ func BuildKeymaps(bindings map[string]map[string]string, leader Key) (map[string
 
 		km := NewKeymap()
 		for _, token := range keys {
-			action := Action(entries[token])
-			if !IsKnownAction(action) {
-				return nil, fmt.Errorf("keybind: [%s] %q: unknown action %q", name, token, action)
+			raws := entries[token]
+			if len(raws) == 0 {
+				return nil, fmt.Errorf("keybind: [%s] %q: empty action chain", name, token)
+			}
+			actions := make([]Action, 0, len(raws))
+			for _, raw := range raws {
+				action := Action(raw)
+				if !IsKnownAction(action) {
+					return nil, fmt.Errorf("keybind: [%s] %q: unknown action %q", name, token, action)
+				}
+				actions = append(actions, action)
 			}
 			seq, err := ParseSequence(token, leader)
 			if err != nil {
 				return nil, fmt.Errorf("keybind: [%s] %q: %w", name, token, err)
 			}
-			km.Bind(seq, action)
+			km.Bind(seq, actions...)
 		}
 		keymaps[name] = km
 	}

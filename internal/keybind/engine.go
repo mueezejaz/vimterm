@@ -57,12 +57,14 @@ func (e *Engine) Flushed() bool {
 	return e.flushed
 }
 
-// Feed processes one key in the given mode and returns the outcome.
-func (e *Engine) Feed(mode string, k Key) (Result, Action) {
+// Feed processes one key in the given mode and returns the outcome. On
+// Matched it returns the bound actions in chain order (one element for an
+// ordinary binding).
+func (e *Engine) Feed(mode string, k Key) (Result, []Action) {
 	e.flushed = false
 	km := (*e.keymaps.Load())[mode]
 	if km == nil {
-		return NoMatch, ""
+		return NoMatch, nil
 	}
 
 	// A pending sequence is invalidated by a mode change or timeout.
@@ -84,12 +86,12 @@ func (e *Engine) Feed(mode string, k Key) (Result, Action) {
 		e.pending = candidate
 		e.pendingMode = mode
 		e.lastKey = time.Now()
-		return Waiting, ""
+		return Waiting, nil
 	}
-	if a, ok := km.Lookup(candidate); ok {
+	if as, ok := km.Lookup(candidate); ok {
 		e.pending = e.pending[:0]
 		e.lastSeq = append(e.lastSeq[:0], candidate...)
-		return Matched, a
+		return Matched, as
 	}
 
 	// Dead end: discard the pending prefix and replay the key fresh.
@@ -99,13 +101,13 @@ func (e *Engine) Feed(mode string, k Key) (Result, Action) {
 		e.pending = []Key{k}
 		e.pendingMode = mode
 		e.lastKey = time.Now()
-		return Waiting, ""
+		return Waiting, nil
 	}
-	if a, ok := km.Lookup([]Key{k}); ok {
+	if as, ok := km.Lookup([]Key{k}); ok {
 		e.lastSeq = append(e.lastSeq[:0], k)
-		return Matched, a
+		return Matched, as
 	}
-	return NoMatch, ""
+	return NoMatch, nil
 }
 
 // LastSeq returns a copy of the key sequence that produced the most recent

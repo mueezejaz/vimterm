@@ -30,6 +30,7 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionSearchNext:       func() { a.countSearch(1) },
 		keybind.ActionSearchPrev:       func() { a.countSearch(-1) },
 		keybind.ActionCommandPrompt:    func() { a.openCommand() },
+		keybind.ActionRenamePrompt:     a.openRenamePrompt,
 		keybind.ActionEnterVisual:      a.enterVisual,
 		keybind.ActionEnterVisLine:     a.enterVisualLine,
 		keybind.ActionCancelVisual:     a.cancelVisual,
@@ -432,4 +433,14 @@ func (a *App) openCommand() {
 	a.preSearchOffset = a.vp.Offset()
 	a.prompt = newPrompt(promptCommand)
 	a.dirty.Store(true)
+}
+
+// openRenamePrompt starts a colon-command prompt prefilled with "rename "
+// so the current tab can be named: enter commits, esc abandons. Meant to be
+// chained after new_tab in bindings.
+func (a *App) openRenamePrompt() {
+	a.openCommand()
+	for _, r := range "rename " {
+		a.prompt.insert(r)
+	}
 }

@@ -84,11 +84,11 @@ Built-in colon-commands (cannot be overridden): `:quit` (exit), `:clear` (clear 
 
 ### Tabs
 
-Each tab runs its own shell; output keeps accumulating while a tab is in the background. `gt` switches to the next tab, `gT` to the previous one, and `{count}gt` jumps to tab N. `leader+nt` opens a fresh shell in a new tab. `leader+tt` opens a tab switcher popup above the status line: type to filter the list (matched against each tab's name), `up`/`down` (or `ctrl+n`/`ctrl+p`) move the selection, `enter` switches to the selected tab, and `ctrl+w` or `esc` closes the popup. Tabs are named after their shell program; `:rename <name>` gives the current tab a custom name (shown in the status line and matched by the popup filter; labels truncate at 8 characters, bare `:rename` resets). With more than one tab open, the status line lists them (the active one highlighted); with one tab the bar looks as before. Closing the last tab exits vimterm.
+Each tab runs its own shell; output keeps accumulating while a tab is in the background. `gt` switches to the next tab, `gT` to the previous one, and `{count}gt` jumps to tab N. `leader+nt` opens a fresh shell in a new tab and immediately asks for a name: type it and press enter, or esc to leave the tab unnamed (it is the chain `["new_tab", "rename_prompt"]`, see below). `leader+tt` opens a tab switcher popup above the status line: type to filter the list (matched against each tab's name), `up`/`down` (or `ctrl+n`/`ctrl+p`) move the selection, `enter` switches to the selected tab, and `ctrl+w` or `esc` closes the popup. Tabs are named after their shell program; `:rename <name>` gives the current tab a custom name (shown in the status line and matched by the popup filter; labels truncate at 8 characters, bare `:rename` resets). With more than one tab open, the status line lists them (the active one highlighted); with one tab the bar looks as before. Closing the last tab exits vimterm.
 
 ### `[keybindings.normal]`, `[keybindings.insert]`, `[keybindings.visual]`
 
-Each section maps a key sequence token to an action name. Omit a section to keep the defaults; define one to fully replace it.
+Each section maps a key sequence token to an action name, or to an ordered chain of action names. Omit a section to keep the defaults; define one to fully replace it.
 
 Token syntax:
 
@@ -99,18 +99,28 @@ Token syntax:
 - `leader+t` — the leader key, then `t`
 - Uppercase/punctuation like `:` implies shift
 
+The value side is an action name or a **chain** — a list of actions run in order when the sequence completes:
+
+```toml
+"h" = "move_left"
+"leader+nt" = ["new_tab", "rename_prompt"]   # open a tab, then ask for its name
+"cos" = ["clear", "shell"]                   # wipe scrollback, restart the shell
+```
+
+A chain stops early if a step opens a prompt (the prompt takes over all input until it is committed with enter or dismissed with esc); every other step always runs.
+
 Available actions:
 
 | action | action |
 |---|---|
 | `move_left` `move_down` `move_up` `move_right` | `goto_top` `goto_bottom` |
 | `scroll_up` `scroll_down` | `enter_insert` `enter_insert_after` `enter_insert_end` `enter_insert_home` `enter_normal` |
-| `search_forward` `search_next` `search_prev` | `command_prompt` |
+| `search_forward` `search_next` `search_prev` | `command_prompt` `rename_prompt` |
 | `enter_visual` `enter_visual_line` `cancel_visual` | `yank` `paste` `paste_before` |
 | `yank_line` `delete_word` `delete_word_back` | `record_macro` `play_macro` `repeat_last` |
 | `find_char` `find_char_back` `find_until` `find_until_back` `find_next` `find_prev` | `move_word` `move_word_back` `move_word_end` `move_word_upper` `move_word_back_upper` `move_word_end_upper` |
-| `next_tab` `prev_tab` `new_tab` `tab_search` | `quit` |
+| `next_tab` `prev_tab` `new_tab` | `tab_search` `quit` |
 
 ### Default bindings
 
-Normal mode mirrors Vim: `h/j/k/l` and arrows move, `gg`/`G` jump, `ctrl+u`/`ctrl+d` scroll, `i`/`a`/`A`/`I` enter insert, `/` searches (`n`/`N` next/prev), `:` opens the command prompt, `v`/`V` visual, `y`/`p`/`P` yank/paste, `yy` yanks the whole line (with a count, several lines), `dw`/`db` delete (and cut) the word forward/backward, `q`/`@` record/play macro, `.` repeats the last command, `f`/`F`/`t`/`T`/`;`/`,` find, `w`/`b`/`e` and `W`/`B`/`E` word motions, `gt`/`gT` switch tabs, `leader+nt` opens a new tab, `leader+tt` opens the tab switcher popup, `ctrl+q` quits. Insert mode binds only `esc` and `ctrl+q`; everything else types through to the shell.
+Normal mode mirrors Vim: `h/j/k/l` and arrows move, `gg`/`G` jump, `ctrl+u`/`ctrl+d` scroll, `i`/`a`/`A`/`I` enter insert, `/` searches (`n`/`N` next/prev), `:` opens the command prompt, `v`/`V` visual, `y`/`p`/`P` yank/paste, `yy` yanks the whole line (with a count, several lines), `dw`/`db` delete (and cut) the word forward/backward, `q`/`@` record/play macro, `.` repeats the last command, `f`/`F`/`t`/`T`/`;`/`,` find, `w`/`b`/`e` and `W`/`B`/`E` word motions, `gt`/`gT` switch tabs, `leader+nt` opens a new tab and asks for its name, `leader+tt` opens the tab switcher popup, `ctrl+q` quits. Insert mode binds only `esc` and `ctrl+q`; everything else types through to the shell.

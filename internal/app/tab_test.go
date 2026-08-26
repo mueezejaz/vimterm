@@ -37,11 +37,7 @@ func newTabTestApp(t *testing.T, n int) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
-	keymaps, err := keybind.BuildKeymaps(map[string]map[string]string{
-		"normal": cfg.Keybindings.Normal,
-		"insert": cfg.Keybindings.Insert,
-		"visual": cfg.Keybindings.Visual,
-	}, leader)
+	keymaps, err := keybind.BuildKeymaps(cfg.Keybindings.ActionTables(), leader)
 	if err != nil {
 		t.Fatal(err)
 	}

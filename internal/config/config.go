@@ -32,12 +32,73 @@ type General struct {
 	StatusMerge string `toml:"status_merge"`
 }
 
+// Binding is one key sequence's payload: a single action name, or an
+// ordered chain of several that the application runs in sequence on a
+// match. In TOML both spellings are accepted:
+//
+//	"h" = "move_left"
+//	"leader+nt" = ["new_tab", "rename_prompt"]
+type Binding []string
+
+// UnmarshalTOML implements toml.Unmarshaler so a binding may be written as
+// either a string or a list of strings. go-toml hands over the raw TOML
+// bytes of the value; they are re-parsed generically to accept both shapes.
+func (b *Binding) UnmarshalTOML(data []byte) error {
+	// The raw bytes are a bare TOML *value* ("x" or ["a", "b"]), not a
+	// document, so embed them in a one-line document before decoding.
+	wrapped := append([]byte("binding = "), data...)
+	wrapped = append(wrapped, '\n')
+	var wrapper struct {
+		Binding any
+	}
+	if err := toml.Unmarshal(wrapped, &wrapper); err != nil {
+		return err
+	}
+	switch t := wrapper.Binding.(type) {
+	case string:
+		*b = Binding{t}
+		return nil
+	case []interface{}:
+		out := make(Binding, 0, len(t))
+		for _, item := range t {
+			s, ok := item.(string)
+			if !ok {
+				return fmt.Errorf("config: action chains must contain only strings, got %T", item)
+			}
+			out = append(out, s)
+		}
+		*b = out
+		return nil
+	default:
+		return fmt.Errorf("config: binding must be a string or list of strings, got %T", wrapper.Binding)
+	}
+}
+
 // Keybindings maps mode names to binding tables. Each table maps a key
-// sequence token (e.g. "gg", "ctrl+u", "leader+t") to an action name.
+// sequence token (e.g. "gg", "ctrl+u", "leader+t") to one action name or an
+// ordered chain of action names.
 type Keybindings struct {
-	Normal map[string]string `toml:"normal"`
-	Insert map[string]string `toml:"insert"`
-	Visual map[string]string `toml:"visual"`
+	Normal map[string]Binding `toml:"normal"`
+	Insert map[string]Binding `toml:"insert"`
+	Visual map[string]Binding `toml:"visual"`
+}
+
+// ActionTables flattens every mode's bindings into plain action-name lists,
+// ready for keybind.BuildKeymaps.
+func (kb *Keybindings) ActionTables() map[string]map[string][]string {
+	tables := make(map[string]map[string][]string, 3)
+	for modeName, table := range map[string]map[string]Binding{
+		"normal": kb.Normal,
+		"insert": kb.Insert,
+		"visual": kb.Visual,
+	} {
+		out := make(map[string][]string, len(table))
+		for token, b := range table {
+			out[token] = []string(b)
+		}
+		tables[modeName] = out
+	}
+	return tables
 }
 
 // Colors holds user-configurable color overrides. Empty strings mean the
@@ -79,101 +140,101 @@ func Default() *Config {
 	}
 }
 
-func defaultNormalBindings() map[string]string {
-	return map[string]string{
-		"h":         "move_left",
-		"j":         "move_down",
-		"k":         "move_up",
-		"l":         "move_right",
-		"left":      "move_left",
-		"down":      "move_down",
-		"up":        "move_up",
-		"right":     "move_right",
-		"gg":        "goto_top",
-		"G":         "goto_bottom",
-		"ctrl+u":    "scroll_up",
-		"ctrl+d":    "scroll_down",
-		"i":         "enter_insert",
-		"a":         "enter_insert_after",
-		"A":         "enter_insert_end",
-		"I":         "enter_insert_home",
-		"/":         "search_forward",
-		"n":         "search_next",
-		"N":         "search_prev",
-		":":         "command_prompt",
-		"v":         "enter_visual",
-		"V":         "enter_visual_line",
-		"y":         "yank",
-		"yy":        "yank_line",
-		"dw":        "delete_word",
-		"db":        "delete_word_back",
-		"p":         "paste",
-		"P":         "paste_before",
-		"q":         "record_macro",
-		"@":         "play_macro",
-		".":         "repeat_last",
-		"f":         "find_char",
-		"F":         "find_char_back",
-		"t":         "find_until",
-		"T":         "find_until_back",
-		";":         "find_next",
-		",":         "find_prev",
-		"w":         "move_word",
-		"b":         "move_word_back",
-		"e":         "move_word_end",
-		"W":         "move_word_upper",
-		"B":         "move_word_back_upper",
-		"E":         "move_word_end_upper",
-		"gt":        "next_tab",
-		"gT":        "prev_tab",
-		"leader+nt": "new_tab",
-		"leader+tt": "tab_search",
-		"ctrl+q":    "quit",
+func defaultNormalBindings() map[string]Binding {
+	return map[string]Binding{
+		"h":         {"move_left"},
+		"j":         {"move_down"},
+		"k":         {"move_up"},
+		"l":         {"move_right"},
+		"left":      {"move_left"},
+		"down":      {"move_down"},
+		"up":        {"move_up"},
+		"right":     {"move_right"},
+		"gg":        {"goto_top"},
+		"G":         {"goto_bottom"},
+		"ctrl+u":    {"scroll_up"},
+		"ctrl+d":    {"scroll_down"},
+		"i":         {"enter_insert"},
+		"a":         {"enter_insert_after"},
+		"A":         {"enter_insert_end"},
+		"I":         {"enter_insert_home"},
+		"/":         {"search_forward"},
+		"n":         {"search_next"},
+		"N":         {"search_prev"},
+		":":         {"command_prompt"},
+		"v":         {"enter_visual"},
+		"V":         {"enter_visual_line"},
+		"y":         {"yank"},
+		"yy":        {"yank_line"},
+		"dw":        {"delete_word"},
+		"db":        {"delete_word_back"},
+		"p":         {"paste"},
+		"P":         {"paste_before"},
+		"q":         {"record_macro"},
+		"@":         {"play_macro"},
+		".":         {"repeat_last"},
+		"f":         {"find_char"},
+		"F":         {"find_char_back"},
+		"t":         {"find_until"},
+		"T":         {"find_until_back"},
+		";":         {"find_next"},
+		",":         {"find_prev"},
+		"w":         {"move_word"},
+		"b":         {"move_word_back"},
+		"e":         {"move_word_end"},
+		"W":         {"move_word_upper"},
+		"B":         {"move_word_back_upper"},
+		"E":         {"move_word_end_upper"},
+		"gt":        {"next_tab"},
+		"gT":        {"prev_tab"},
+		"leader+nt": {"new_tab", "rename_prompt"},
+		"leader+tt": {"tab_search"},
+		"ctrl+q":    {"quit"},
 	}
 }
 
-func defaultInsertBindings() map[string]string {
-	return map[string]string{
-		"esc":    "enter_normal",
-		"ctrl+q": "quit",
+func defaultInsertBindings() map[string]Binding {
+	return map[string]Binding{
+		"esc":    {"enter_normal"},
+		"ctrl+q": {"quit"},
 	}
 }
 
-func defaultVisualBindings() map[string]string {
-	return map[string]string{
-		"h":      "move_left",
-		"j":      "move_down",
-		"k":      "move_up",
-		"l":      "move_right",
-		"left":   "move_left",
-		"down":   "move_down",
-		"up":     "move_up",
-		"right":  "move_right",
-		"gg":     "goto_top",
-		"G":      "goto_bottom",
-		"ctrl+u": "scroll_up",
-		"ctrl+d": "scroll_down",
-		"v":      "enter_visual",
-		"V":      "enter_visual_line",
-		"y":      "yank",
-		"d":      "yank",
-		"p":      "paste",
-		"P":      "paste_before",
-		"f":      "find_char",
-		"F":      "find_char_back",
-		"t":      "find_until",
-		"T":      "find_until_back",
-		";":      "find_next",
-		",":      "find_prev",
-		"w":      "move_word",
-		"b":      "move_word_back",
-		"e":      "move_word_end",
-		"W":      "move_word_upper",
-		"B":      "move_word_back_upper",
-		"E":      "move_word_end_upper",
-		"i":      "enter_insert",
-		"esc":    "enter_normal",
-		"ctrl+q": "quit",
+func defaultVisualBindings() map[string]Binding {
+	return map[string]Binding{
+		"h":      {"move_left"},
+		"j":      {"move_down"},
+		"k":      {"move_up"},
+		"l":      {"move_right"},
+		"left":   {"move_left"},
+		"down":   {"move_down"},
+		"up":     {"move_up"},
+		"right":  {"move_right"},
+		"gg":     {"goto_top"},
+		"G":      {"goto_bottom"},
+		"ctrl+u": {"scroll_up"},
+		"ctrl+d": {"scroll_down"},
+		"v":      {"enter_visual"},
+		"V":      {"enter_visual_line"},
+		"y":      {"yank"},
+		"d":      {"yank"},
+		"p":      {"paste"},
+		"P":      {"paste_before"},
+		"f":      {"find_char"},
+		"F":      {"find_char_back"},
+		"t":      {"find_until"},
+		"T":      {"find_until_back"},
+		";":      {"find_next"},
+		",":      {"find_prev"},
+		"w":      {"move_word"},
+		"b":      {"move_word_back"},
+		"e":      {"move_word_end"},
+		"W":      {"move_word_upper"},
+		"B":      {"move_word_back_upper"},
+		"E":      {"move_word_end_upper"},
+		"i":      {"enter_insert"},
+		"esc":    {"enter_normal"},
+		"ctrl+q": {"quit"},
 	}
 }
 
@@ -211,11 +272,15 @@ func EnsureDefault(path string) error {
 // defaults.
 func Load(path string) (*Config, error) {
 	cfg := Default()
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("config: read %s: %w", path, err)
+		return nil, fmt.Errorf("config: open %s: %w", path, err)
 	}
-	if err := toml.Unmarshal(data, cfg); err != nil {
+	defer f.Close()
+	// The unmarshaler interface must be enabled explicitly so Binding can
+	// accept both the string and list spellings.
+	dec := toml.NewDecoder(f).EnableUnmarshalerInterface()
+	if err := dec.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("config: parse %s: %w", path, err)
 	}
 	if cfg.General.Shell == "" {
@@ -351,7 +416,9 @@ status_bg = ""
 "E" = "move_word_end_upper"
 "gt" = "next_tab"
 "gT" = "prev_tab"
-"leader+nt" = "new_tab"
+# Chains run several actions in order; the chain stops early when a step
+# opens a prompt (the prompt takes over input).
+"leader+nt" = ["new_tab", "rename_prompt"]
 "leader+tt" = "tab_search"
 "ctrl+q" = "quit"
 

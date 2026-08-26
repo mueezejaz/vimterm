@@ -34,11 +34,42 @@ timeoutlen = 500
 	if cfg.General.Timeoutlen != 500 {
 		t.Errorf("timeoutlen = %d, want 500", cfg.General.Timeoutlen)
 	}
-	if cfg.Keybindings.Normal["h"] != "move_left" {
+	if cfg.Keybindings.Normal["h"] == nil || cfg.Keybindings.Normal["h"][0] != "move_left" {
 		t.Errorf("normal h = %q", cfg.Keybindings.Normal["h"])
 	}
-	if cfg.Keybindings.Insert["esc"] != "enter_normal" {
+	if cfg.Keybindings.Insert["esc"] == nil || cfg.Keybindings.Insert["esc"][0] != "enter_normal" {
 		t.Errorf("insert esc = %q", cfg.Keybindings.Insert["esc"])
+	}
+}
+
+func TestLoadChainBinding(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	content := `[keybindings.normal]
+"leader+nt" = ["new_tab", "rename_prompt"]
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.Keybindings.Normal["leader+nt"]
+	if len(got) != 2 || got[0] != "new_tab" || got[1] != "rename_prompt" {
+		t.Fatalf("chain = %q, want [new_tab rename_prompt]", got)
+	}
+}
+
+func TestLoadChainBindingRejectsNonString(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	content := "[keybindings.normal]\n\"x\" = [\"quit\", 3]\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error for non-string chain element")
 	}
 }
 
@@ -52,10 +83,10 @@ func TestLoadWithoutKeybindingsUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Keybindings.Normal["j"] != "move_down" {
+	if cfg.Keybindings.Normal["j"] == nil || cfg.Keybindings.Normal["j"][0] != "move_down" {
 		t.Errorf("default j binding missing: %q", cfg.Keybindings.Normal["j"])
 	}
-	if cfg.Keybindings.Insert["esc"] != "enter_normal" {
+	if cfg.Keybindings.Insert["esc"] == nil || cfg.Keybindings.Insert["esc"][0] != "enter_normal" {
 		t.Errorf("default insert esc missing: %q", cfg.Keybindings.Insert["esc"])
 	}
 }
@@ -70,7 +101,7 @@ func TestWatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Keybindings.Normal["h"] != "move_left" {
+	if cfg.Keybindings.Normal["h"] == nil || cfg.Keybindings.Normal["h"][0] != "move_left" {
 		t.Fatalf("unexpected initial config: %q", cfg.Keybindings.Normal["h"])
 	}
 
@@ -90,7 +121,7 @@ func TestWatch(t *testing.T) {
 
 	select {
 	case cfg := <-updates:
-		if cfg.Keybindings.Normal["h"] != "quit" {
+		if cfg.Keybindings.Normal["h"] == nil || cfg.Keybindings.Normal["h"][0] != "quit" {
 			t.Fatalf("reloaded binding h = %q, want quit", cfg.Keybindings.Normal["h"])
 		}
 	case <-time.After(5 * time.Second):

@@ -8,10 +8,10 @@ import (
 func TestParseSequence(t *testing.T) {
 	leader := NewRune(',', 0)
 	tests := []struct {
-		name  string
-		in    string
-		want  []Key
-		err   bool
+		name string
+		in   string
+		want []Key
+		err  bool
 	}{
 		{"single letter", "h", []Key{NewRune('h', 0)}, false},
 		{"two-key sequence", "gg", []Key{NewRune('g', 0), NewRune('g', 0)}, false},
@@ -58,14 +58,15 @@ func TestParseSequence(t *testing.T) {
 }
 
 func TestBuildKeymaps(t *testing.T) {
-	km, err := BuildKeymaps(map[string]map[string]string{
+	km, err := BuildKeymaps(map[string]map[string][]string{
 		"normal": {
-			"h": "move_left",
-			"j": "move_down",
-			"gg": "goto_top",
+			"h":  {"move_left"},
+			"j":  {"move_down"},
+			"gg": {"goto_top"},
+			"zz": {"enter_insert", "enter_normal"},
 		},
 		"insert": {
-			"esc": "enter_normal",
+			"esc": {"enter_normal"},
 		},
 	}, NewRune(' ', 0))
 	if err != nil {
@@ -77,11 +78,15 @@ func TestBuildKeymaps(t *testing.T) {
 	if _, ok := km["insert"]; !ok {
 		t.Fatal("missing insert keymap")
 	}
-	if a, ok := km["normal"].Lookup([]Key{NewRune('h', 0)}); !ok || a != ActionMoveLeft {
+	if a, ok := km["normal"].Lookup([]Key{NewRune('h', 0)}); !ok || len(a) != 1 || a[0] != ActionMoveLeft {
 		t.Errorf("h lookup = %q,%v", a, ok)
 	}
-	if a, ok := km["normal"].Lookup([]Key{NewRune('g', 0), NewRune('g', 0)}); !ok || a != ActionGotoTop {
+	if a, ok := km["normal"].Lookup([]Key{NewRune('g', 0), NewRune('g', 0)}); !ok || len(a) != 1 || a[0] != ActionGotoTop {
 		t.Errorf("gg lookup = %q,%v", a, ok)
+	}
+	a, ok := km["normal"].Lookup([]Key{NewRune('z', 0), NewRune('z', 0)})
+	if !ok || len(a) != 2 || a[0] != ActionEnterInsert || a[1] != ActionEnterNormal {
+		t.Errorf("zz chain lookup = %q,%v, want [enter_insert enter_normal]", a, ok)
 	}
 	if !km["normal"].IsPrefix([]Key{NewRune('g', 0)}) {
 		t.Error("g must be a prefix")
@@ -92,17 +97,35 @@ func TestBuildKeymaps(t *testing.T) {
 }
 
 func TestBuildKeymapsUnknownAction(t *testing.T) {
-	_, err := BuildKeymaps(map[string]map[string]string{
-		"normal": {"h": "fly_to_moon"},
+	_, err := BuildKeymaps(map[string]map[string][]string{
+		"normal": {"h": {"fly_to_moon"}},
 	}, NewRune(' ', 0))
 	if err == nil {
 		t.Fatal("expected error for unknown action")
 	}
 }
 
+func TestBuildKeymapsUnknownActionInChain(t *testing.T) {
+	_, err := BuildKeymaps(map[string]map[string][]string{
+		"normal": {"zz": {"enter_insert", "fly_to_moon"}},
+	}, NewRune(' ', 0))
+	if err == nil {
+		t.Fatal("expected error for unknown action mid-chain")
+	}
+}
+
+func TestBuildKeymapsEmptyChain(t *testing.T) {
+	_, err := BuildKeymaps(map[string]map[string][]string{
+		"normal": {"h": {}},
+	}, NewRune(' ', 0))
+	if err == nil {
+		t.Fatal("expected error for empty action chain")
+	}
+}
+
 func TestBuildKeymapsBadToken(t *testing.T) {
-	_, err := BuildKeymaps(map[string]map[string]string{
-		"normal": {"ctrl+": "move_left"},
+	_, err := BuildKeymaps(map[string]map[string][]string{
+		"normal": {"ctrl+": {"move_left"}},
 	}, NewRune(' ', 0))
 	if err == nil {
 		t.Fatal("expected error for bad token")
@@ -113,7 +136,7 @@ func TestKeymapBindOverride(t *testing.T) {
 	km := NewKeymap()
 	km.Bind([]Key{NewRune('h', 0)}, ActionMoveLeft)
 	km.Bind([]Key{NewRune('h', 0)}, ActionMoveRight)
-	if a, _ := km.Lookup([]Key{NewRune('h', 0)}); a != ActionMoveRight {
+	if a, _ := km.Lookup([]Key{NewRune('h', 0)}); len(a) != 1 || a[0] != ActionMoveRight {
 		t.Errorf("override failed: %q", a)
 	}
 }
