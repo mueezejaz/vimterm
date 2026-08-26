@@ -80,12 +80,12 @@ func TestRefreshSkipsUnchangedBuffer(t *testing.T) {
 		return cells
 	}
 	s := New(line)
-	s.SetQuery([]rune("world"))
+	s.SetQueryGen([]rune("world"), 2)
 	if len(s.Matches()) != 2 {
 		t.Fatalf("matches = %v, want 2", s.Matches())
 	}
 	before := calls
-	// Same query, same buffer length: repeat navigation must not rescan.
+	// Same query, same generation: repeat navigation must not rescan.
 	s.Refresh([]rune("world"), 2)
 	if calls != before {
 		t.Fatalf("Refresh rescanned an unchanged buffer (%d extra calls)", calls-before)
@@ -102,10 +102,41 @@ func TestRefreshSkipsUnchangedBuffer(t *testing.T) {
 	if len(s.Matches()) != 3 {
 		t.Fatalf("matches = %v, want 3", s.Matches())
 	}
-	// Query changed: Refresh must rescan even at the same length.
+	// Query changed: Refresh must rescan even at the same generation.
 	s.Refresh([]rune("again"), 3)
 	if len(s.Matches()) != 1 || s.Matches()[0].Line != 2 {
 		t.Fatalf("matches = %v, want one match on line 2", s.Matches())
+	}
+}
+
+// The generation must not be a buffer line count: once scrollback
+// saturates, the line count freezes while every line shifts down, so a
+// count-keyed cache left matches pointing at stale lines forever. Content
+// that moves at constant total length must invalidate.
+func TestRefreshGenerationNotLineCount(t *testing.T) {
+	lines := []string{"aaa", "bbb", "needle"}
+	line := func(l int) []emulator.Cell {
+		if l < 0 || l >= len(lines) {
+			return nil
+		}
+		var cells []emulator.Cell
+		for _, r := range lines[l] {
+			cells = append(cells, emulator.Cell{Content: string(r), Width: 1})
+		}
+		return cells
+	}
+	s := New(line)
+	s.SetQueryGen([]rune("needle"), 100)
+	if m := s.Matches(); len(m) != 1 || m[0].Line != 2 {
+		t.Fatalf("matches = %v, want one on line 2", m)
+	}
+	// Scrollback trims the oldest line: same total line count, everything
+	// shifted up by one.
+	lines = []string{"bbb", "needle", "ccc"}
+	s.Refresh([]rune("needle"), 101)
+	m := s.Matches()
+	if len(m) != 1 || m[0].Line != 1 {
+		t.Fatalf("matches = %v, want one on shifted line 1 (stale cache)", m)
 	}
 }
 

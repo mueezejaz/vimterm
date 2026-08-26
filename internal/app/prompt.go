@@ -117,7 +117,7 @@ func (a *App) handlePromptKey(k keybind.Key) {
 	}
 	if a.prompt != nil && a.prompt.kind == promptSearch {
 		// Live (incremental) search: recompute matches and jump.
-		a.search.SetQuery([]rune(a.prompt.text()))
+		a.search.SetQueryGen([]rune(a.prompt.text()), a.searchGeneration())
 		a.jumpToFirstMatch()
 	}
 	a.dirty.Store(true)

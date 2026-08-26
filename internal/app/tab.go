@@ -54,11 +54,15 @@ type tabState struct {
 
 	// gen guards this tab's reader/waiter goroutines across :shell
 	// restarts; done is closed by the current generation when the session
-	// ends; err holds the read error, if any.
+	// ends; err holds the read error, if any. outBytes counts every byte
+	// the reader fed into the emulator; it is the monotonic generation
+	// search.Refresh keys its cache on (buffer line counts stop changing
+	// once scrollback saturates and would leave matches drifting).
 	gen      atomic.Int64
 	done     chan struct{}
 	doneOnce sync.Once
 	err      atomic.Value
+	outBytes atomic.Int64
 }
 
 func newTabState(sess session, emu emulator.Emulator, rows int) *tabState {

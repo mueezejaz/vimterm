@@ -255,6 +255,7 @@ func (a *App) startReader(t *tabState) {
 			n, err := sess.Read(buf)
 			if n > 0 {
 				emu.Write(buf[:n])
+				t.outBytes.Add(int64(n))
 				a.dirty.Store(true)
 			}
 			if err != nil {
@@ -812,6 +813,16 @@ func (a *App) topAbsLine() int {
 	return a.emu.ScrollbackLen() - a.vp.Offset()
 }
 
+// searchGeneration returns the active tab's monotonic output generation for
+// search cache invalidation, or -1 (never cached) when no tab materializes
+// the active state.
+func (a *App) searchGeneration() int {
+	if a.active < 0 || a.active >= len(a.tabs) {
+		return -1
+	}
+	return int(a.tabs[a.active].outBytes.Load())
+}
+
 // bufferLineCells returns the cells of one absolute buffer line, or nil when
 // the line does not exist.
 func (a *App) bufferLineCells(absLine int) []emulator.Cell {
@@ -903,8 +914,10 @@ func (a *App) nextSearch(step int) {
 		a.syncCursor()
 	}
 	// Re-scan the buffer only when new output arrived since the last scan;
-	// a counted search (99999n) must not rescan on every step.
-	a.search.Refresh(a.search.Query(), a.emu.ScrollbackLen()+a.emu.Height())
+	// a counted search (99999n) must not rescan on every step. The
+	// generation is the tab's output byte count, not the buffer line
+	// count: lines stop changing once scrollback saturates.
+	a.search.Refresh(a.search.Query(), a.searchGeneration())
 	var m search.Match
 	var ok bool
 	if step > 0 {

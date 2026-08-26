@@ -25,12 +25,12 @@ type Search struct {
 	line    Line
 	query   []rune
 	matches []Match
-	scanned int // buffer lines covered by matches at the last recompute
+	gen     int // output generation covered by matches (-1 = none/stale)
 }
 
 // New creates a Search over the given line provider.
 func New(line Line) *Search {
-	return &Search{line: line}
+	return &Search{line: line, gen: -1}
 }
 
 // Query returns the active query runes.
@@ -42,30 +42,42 @@ func (s *Search) Query() []rune {
 func (s *Search) Clear() {
 	s.query = nil
 	s.matches = nil
-	s.scanned = 0
+	s.gen = -1
 }
 
 // SetQuery replaces the query and recomputes all matches over the buffer.
+// The next Refresh rescans unconditionally (the generation it would key on
+// is unknown).
 func (s *Search) SetQuery(q []rune) {
+	s.SetQueryGen(q, -1)
+}
+
+// SetQueryGen replaces the query and records the output generation the
+// recompute covered, so a following Refresh can skip an unchanged buffer.
+func (s *Search) SetQueryGen(q []rune, gen int) {
 	s.query = q
-	s.recompute()
+	s.recompute(gen)
 }
 
 // Refresh recomputes the matches for q unless neither the query nor the
-// buffer length changed since the last scan. Repeat navigation (n/N with a
-// count) calls this with the unchanged query; without the length check each
-// step would rescan the whole buffer, making a counted search quadratic.
-func (s *Search) Refresh(q []rune, bufferLen int) {
-	if bufferLen == s.scanned && string(q) == string(s.query) {
+// output generation changed since the last scan. The generation must grow
+// monotonically with everything the line provider can see — a byte counter
+// fed from the session reader works; a buffer line count does not, because
+// it stops changing once scrollback saturates while every stored match line
+// keeps drifting. Repeat navigation (n/N with a count) calls this with an
+// unchanged query; without the generation check each step would rescan the
+// whole buffer, making a counted search quadratic.
+func (s *Search) Refresh(q []rune, gen int) {
+	if gen == s.gen && string(q) == string(s.query) {
 		return
 	}
 	s.query = q
-	s.recompute()
+	s.recompute(gen)
 }
 
-func (s *Search) recompute() {
+func (s *Search) recompute(gen int) {
 	s.matches = nil
-	s.scanned = 0
+	s.gen = gen
 	if len(s.query) == 0 || s.line == nil {
 		return
 	}
@@ -103,7 +115,6 @@ func (s *Search) recompute() {
 			s.matches = append(s.matches, Match{Line: l, Col: runeCol[idx]})
 			from = idx + len(low)
 		}
-		s.scanned = l + 1
 	}
 }
 
