@@ -134,3 +134,73 @@ func TestWatch(t *testing.T) {
 	}
 	time.Sleep(200 * time.Millisecond)
 }
+
+// A freshly started watcher must not report the file it was just seeded
+// from: the zero baselines used to fire a spurious "config reloaded" on
+// the first tick of every run.
+func TestWatchNoSpuriousInitialReload(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[general]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	calls := make(chan struct{}, 4)
+	stop := Watch(path, 50*time.Millisecond, func(*Config, error) {
+		calls <- struct{}{}
+	})
+	defer stop()
+	// Two ticks without any edit: neither may invoke the callback.
+	select {
+	case <-calls:
+		t.Fatal("watcher fired without a config change")
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+// A file observed mid-write must not reach the callback: Load used to run
+// against the truncated state and hand back a defaults-flavored config as
+// if it were valid.
+func TestWatchSkipsTornRead(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing-sensitive")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	full := []byte("[keybindings.normal]\n\"h\" = \"quit\"\n")
+	if err := os.WriteFile(path, full, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		cfg *Config
+		err error
+	}
+	results := make(chan result, 4)
+	stop := Watch(path, 30*time.Millisecond, func(cfg *Config, err error) {
+		results <- result{cfg, err}
+	})
+	defer stop()
+
+	// Truncate, then complete the write while a poll is likely in flight.
+	if err := os.WriteFile(path, full[:0], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(35 * time.Millisecond)
+	if err := os.WriteFile(path, full, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case r := <-results:
+			// Any delivered config must be the finished file, never the
+			// truncated intermediate (which would parse to defaults).
+			if r.err == nil && len(r.cfg.Keybindings.Normal["h"]) > 0 && r.cfg.Keybindings.Normal["h"][0] != "quit" {
+				t.Fatalf("torn read delivered h = %q", r.cfg.Keybindings.Normal["h"])
+			}
+		case <-deadline:
+			return // final write already consumed by an earlier tick
+		}
+	}
+}

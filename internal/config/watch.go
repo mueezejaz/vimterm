@@ -11,28 +11,41 @@ import (
 func Watch(path string, interval time.Duration, cb func(*Config, error)) func() {
 	stop := make(chan struct{})
 	go func() {
-		var lastMod time.Time
-		var lastSize int64 = -1
+		// Seed from the file as it stands right now: the caller has just
+		// loaded and applied it, and zero baselines would fire a spurious
+		// reload on the first tick.
+		lastMod, lastSize := statFile(path)
 		for {
 			select {
 			case <-stop:
 				return
 			case <-time.After(interval):
-				info, err := os.Stat(path)
-				if err != nil {
-					continue
-				}
-				// Modification times are coarse on some filesystems (FAT:
-				// 2s), so an edit that lands within the resolution of the
-				// previous write is only visible through its size.
-				if !info.ModTime().Equal(lastMod) || info.Size() != lastSize {
-					lastMod = info.ModTime()
-					lastSize = info.Size()
-					cfg, err := Load(path)
-					cb(cfg, err)
-				}
+			mod, size := statFile(path)
+			if mod.Equal(lastMod) && size == lastSize {
+				continue
+			}
+			cfg, err := Load(path)
+			newMod, newSize := statFile(path)
+			// If the file was observed at zero bytes (e.g. in-place save
+			// that truncates before rewriting), skip this cycle and don't
+			// commit the stat so the next tick catches the completed write.
+			if size == 0 || newSize == 0 {
+				continue
+			}
+			if newMod.Equal(mod) && newSize == size {
+				cb(cfg, err)
+			}
+			lastMod, lastSize = newMod, newSize
 			}
 		}
 	}()
 	return func() { close(stop) }
+}
+
+func statFile(path string) (time.Time, int64) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, -1
+	}
+	return info.ModTime(), info.Size()
 }
