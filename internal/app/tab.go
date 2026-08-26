@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -44,6 +45,10 @@ type tabState struct {
 	cols      int
 	rows      int
 	sb        int
+
+	// name is a custom tab name set with :rename; empty falls back to the
+	// shell program's base name.
+	name string
 
 	preSearchOffset int
 
@@ -206,22 +211,48 @@ func (a *App) childError() error {
 	return nil
 }
 
-// tabLabels builds short labels for the status line, one per tab, using the
-// base name of each shell program capped at maxLabelLen cells plus its
-// 1-based index ("1:pwsh").
+// tabName returns a tab's display name: its custom :rename name, or the
+// base name of its shell program.
+func tabName(t *tabState) string {
+	if t.name != "" {
+		return t.name
+	}
+	return filepath.Base(sessName(t.sess))
+}
+
+// tabLabels builds short labels for the status line, one per tab: the tab's
+// 1-based index plus its name, truncated to maxTabLabelLen cells
+// ("1:pwsh").
 func tabLabels(tabs []*tabState, active int) ([]string, int) {
 	labels := make([]string, len(tabs))
 	for i, t := range tabs {
-		name := filepath.Base(sessName(t.sess))
-		if len(name) > maxTabLabelLen {
-			name = name[:maxTabLabelLen]
-		}
-		labels[i] = itoa(i+1) + ":" + name
+		labels[i] = itoa(i+1) + ":" + truncateRunes(tabName(t), maxTabLabelLen)
 	}
 	return labels, active
 }
 
 const maxTabLabelLen = 8
+
+// truncateRunes shortens s to at most n runes without splitting one.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) > n {
+		return string(r[:n])
+	}
+	return s
+}
+
+// renameTab names the active tab; an empty name resets it to the shell's.
+func (a *App) renameTab(name string) {
+	t := a.tabs[a.active]
+	t.name = strings.TrimSpace(name)
+	if t.name == "" {
+		a.setStatusMsg("tab name reset")
+	} else {
+		a.setStatusMsg("tab renamed to " + t.name)
+	}
+	a.dirty.Store(true)
+}
 
 // sessName returns the session's name, or "" for a nil session.
 func sessName(s session) string {

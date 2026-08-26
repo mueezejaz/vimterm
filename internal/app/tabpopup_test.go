@@ -166,3 +166,68 @@ func TestTabPopupCursorColAfterPrefix(t *testing.T) {
 		t.Fatalf("cursorCol = %d, want %d (mode prefix + \"tabs>\" + cursor)", got, 8+5+1)
 	}
 }
+
+func TestRenameTabShowsInLabelsAndPopup(t *testing.T) {
+	a := newTabTestApp(t, 2)
+	a.execCommand("rename build")
+	if a.tabs[0].name != "build" {
+		t.Fatalf("tab name = %q, want build", a.tabs[0].name)
+	}
+	labels, _ := tabLabels(a.tabs, 0)
+	if labels[0] != "1:build" || labels[1] != "2:fake" {
+		t.Fatalf("labels = %v, want [1:build 2:fake]", labels)
+	}
+	// The popup filter matches the custom name, and only that tab.
+	a.openTabPopup()
+	pressKeys(t, a, "build")
+	a.handleKey(keybind.NewCode(keybind.CodeEnter, 0))
+	if a.active != 0 {
+		t.Fatalf("filter \"build\" selected tab %d, want 0", a.active)
+	}
+}
+
+func TestRenameOnlyAffectsActiveTab(t *testing.T) {
+	a := newTabTestApp(t, 2)
+	a.switchTo(1)
+	a.execCommand("rename second")
+	if a.tabs[0].name != "" {
+		t.Fatalf("background tab renamed too: %q", a.tabs[0].name)
+	}
+	a.switchTo(0)
+	labels, _ := tabLabels(a.tabs, 0)
+	if labels[0] != "1:fake" || labels[1] != "2:second" {
+		t.Fatalf("labels = %v, want [1:fake 2:second]", labels)
+	}
+}
+
+func TestRenameWithoutArgResets(t *testing.T) {
+	a := newTabTestApp(t, 1)
+	a.execCommand("rename temp")
+	a.execCommand("rename")
+	if a.tabs[0].name != "" {
+		t.Fatalf("name after bare :rename = %q, want empty", a.tabs[0].name)
+	}
+	labels, _ := tabLabels(a.tabs, 0)
+	if labels[0] != "1:fake" {
+		t.Fatalf("label after reset = %q, want 1:fake", labels[0])
+	}
+}
+
+func TestRenameLongNameTruncatesLabelNotFilter(t *testing.T) {
+	a := newTabTestApp(t, 1)
+	a.execCommand("rename a-very-long-project-name")
+	labels, _ := tabLabels(a.tabs, 0)
+	if labels[0] != "1:a-very-l" {
+		t.Fatalf("label = %q, want rune-safe truncation to 1:a-very-l", labels[0])
+	}
+	// Filtering still works on the full name.
+	if idx := a.filteredTabs("project"); len(idx) != 1 {
+		t.Fatalf("filter \"project\" = %v, want [0]", idx)
+	}
+}
+
+func TestRenameIsBuiltin(t *testing.T) {
+	if !builtinCommands["rename"] {
+		t.Fatal("rename must be a built-in command so [commands] cannot shadow it")
+	}
+}

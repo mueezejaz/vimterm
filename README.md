@@ -80,11 +80,11 @@ Custom colon-commands: a name maps to a key sequence (binding token syntax) that
 clean = "leader+c"   # now :clean runs leader+c
 ```
 
-Built-in colon-commands (cannot be overridden): `:quit` (exit), `:clear` (clear scrollback), `:shell` (restart the shell), `:new` / `:tabnew` (open a new shell in a new tab), `:close` / `:tabclose` (close the current tab).
+Built-in colon-commands (cannot be overridden): `:quit` (exit), `:clear` (clear scrollback), `:shell` (restart the shell), `:new` / `:tabnew` (open a new shell in a new tab), `:close` / `:tabclose` (close the current tab), `:rename <name>` (name the current tab; bare `:rename` resets it to the shell's name).
 
 ### Tabs
 
-Each tab runs its own shell; output keeps accumulating while a tab is in the background. `gt` switches to the next tab, `gT` to the previous one, and `{count}gt` jumps to tab N. `leader+gt` opens a tab switcher popup above the status line: type to filter the list (matched against each tab's shell name), `up`/`down` (or `ctrl+n`/`ctrl+p`) move the selection, `enter` switches to the selected tab, and `ctrl+w` or `esc` closes the popup. With more than one tab open, the status line lists them (the active one highlighted); with one tab the bar looks as before. Closing the last tab exits vimterm.
+Each tab runs its own shell; output keeps accumulating while a tab is in the background. `gt` switches to the next tab, `gT` to the previous one, and `{count}gt` jumps to tab N. `leader+gt` opens a tab switcher popup above the status line: type to filter the list (matched against each tab's name), `up`/`down` (or `ctrl+n`/`ctrl+p`) move the selection, `enter` switches to the selected tab, and `ctrl+w` or `esc` closes the popup. Tabs are named after their shell program; `:rename <name>` gives the current tab a custom name (shown in the status line and matched by the popup filter; labels truncate at 8 characters, bare `:rename` resets). With more than one tab open, the status line lists them (the active one highlighted); with one tab the bar looks as before. Closing the last tab exits vimterm.
 
 ### `[keybindings.normal]`, `[keybindings.insert]`, `[keybindings.visual]`
 

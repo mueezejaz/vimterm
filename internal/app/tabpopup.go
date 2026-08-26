@@ -21,14 +21,15 @@ func (a *App) openTabPopup() {
 	a.dirty.Store(true)
 }
 
-// filteredTabs returns the indices of tabs whose status-line label contains
-// the query (case-insensitive), in tab order.
+// filteredTabs returns the indices of tabs whose full name (custom :rename
+// name or shell name, with the 1-based index) contains the query
+// case-insensitively, in tab order.
 func (a *App) filteredTabs(query string) []int {
-	labels, _ := tabLabels(a.tabs, a.active)
 	q := strings.ToLower(query)
 	var out []int
-	for i, l := range labels {
-		if q == "" || strings.Contains(strings.ToLower(l), q) {
+	for i, t := range a.tabs {
+		full := itoa(i+1) + ":" + tabName(t)
+		if q == "" || strings.Contains(strings.ToLower(full), q) {
 			out = append(out, i)
 		}
 	}
