@@ -77,6 +77,7 @@ const (
 	enableEchoInput         = 0x0004
 	enableWindowInput       = 0x0008
 	enableMouseInput        = 0x0010
+	enableQuickEditMode     = 0x0040
 	enableExtendedFlags     = 0x0080
 	enableVirtualTermInput  = 0x0200
 	enableProcessedOutput   = 0x0001
@@ -149,8 +150,11 @@ func Init() (*Console, error) {
 		return nil, fmt.Errorf("console: GetConsoleMode(out): %w", err)
 	}
 
+	consoleDebugLog("INIT: origIn=0x%08x origOut=0x%08x quickEdit=%v",
+		origIn, origOut, origIn&enableQuickEditMode != 0)
+
 	rawIn := origIn
-	rawIn &^= enableProcessedInput | enableLineInput | enableEchoInput
+	rawIn &^= enableProcessedInput | enableLineInput | enableEchoInput | enableQuickEditMode
 	rawIn |= enableWindowInput | enableMouseInput | enableExtendedFlags
 
 	// Try enabling VT input. This makes ReadFile return VT sequences for
@@ -159,12 +163,15 @@ func Init() (*Console, error) {
 	vtOk := false
 	if err := windows.SetConsoleMode(in, rawIn|enableVirtualTermInput); err == nil {
 		vtOk = true
+		consoleDebugLog("INIT: VT input enabled (rawIn|0x%08x)", enableVirtualTermInput)
 	} else {
+		consoleDebugLog("INIT: VT input FAILED: %v, falling back to legacy", err)
 		// Fall back to non-VT mode.
 		if err := windows.SetConsoleMode(in, rawIn); err != nil {
 			return nil, fmt.Errorf("console: SetConsoleMode(in): %w", err)
 		}
 	}
+	consoleDebugLog("INIT: final in mode=0x%08x vtIn=%v", rawIn|boolToUint32(vtOk, enableVirtualTermInput), vtOk)
 
 	vtOut := origOut
 	vtOut |= enableProcessedOutput | enableVirtualTermOutput | disableNewlineAutoRet
@@ -387,6 +394,13 @@ func initConsoleDebugLog() func(format string, args ...any) {
 		fmt.Fprintf(f, time.Now().Format("15:04:05.000")+" "+format+"\n", args...)
 		f.Sync()
 	}
+}
+
+func boolToUint32(b bool, val uint32) uint32 {
+	if b {
+		return val
+	}
+	return 0
 }
 
 // inputLoopLegacy reads INPUT_RECORDs via ReadConsoleInputW.
