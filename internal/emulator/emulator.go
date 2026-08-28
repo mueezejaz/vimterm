@@ -43,6 +43,9 @@ type Emulator interface {
 	Resize(cols, rows int)
 	// Cell returns the cell at column x, row y (0-based).
 	Cell(x, y int) Cell
+	// ReadCells reads a rectangle of cells under a single lock.
+	// Cells are written into dst which must have room for w*h cells.
+	ReadCells(sx, sy, w, h int, dst []Cell)
 	// Cursor returns the cursor position in grid coordinates.
 	Cursor() (x, y int)
 	Width() int
@@ -57,6 +60,9 @@ type Emulator interface {
 	// ScrollbackCell returns the cell at column x of scrolled-off line y
 	// (0 = oldest line). Out-of-range positions return a blank cell.
 	ScrollbackCell(x, y int) Cell
+	// ReadScrollbackCells reads a row of scrollback cells under a single lock.
+	// Cells are written into dst which must have room for w cells.
+	ReadScrollbackCells(x, y, w int, dst []Cell)
 	// DeleteLineCells removes n cells at column col of the absolute buffer
 	// line (scrollback + live screen), shifting the rest of the line left
 	// and blanking the freed tail.
@@ -101,10 +107,29 @@ func (e *vtEmulator) Cell(x, y int) Cell {
 	return fromUVCell(e.term.CellAt(x, y))
 }
 
+func (e *vtEmulator) ReadCells(sx, sy, w, h int, dst []Cell) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for dy := 0; dy < h; dy++ {
+		rowOff := dy * w
+		for dx := 0; dx < w; dx++ {
+			dst[rowOff+dx] = fromUVCell(e.term.CellAt(sx+dx, sy+dy))
+		}
+	}
+}
+
 func (e *vtEmulator) ScrollbackCell(x, y int) Cell {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return fromUVCell(e.term.ScrollbackCellAt(x, y))
+}
+
+func (e *vtEmulator) ReadScrollbackCells(x, y, w int, dst []Cell) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for dx := 0; dx < w; dx++ {
+		dst[dx] = fromUVCell(e.term.ScrollbackCellAt(x+dx, y))
+	}
 }
 
 // DeleteLineCells removes n cells starting at column col of the absolute
