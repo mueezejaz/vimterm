@@ -5,9 +5,11 @@ package emulator
 import (
 	"image/color"
 	"sync"
+	"sync/atomic"
 
-	"github.com/charmbracelet/x/vt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 )
 
 // Color is an RGB color, or the terminal default.
@@ -18,17 +20,17 @@ type Color struct {
 
 // Cell is a single terminal cell.
 type Cell struct {
-	Content string
-	Width   int
-	Fg      Color
-	Bg      Color
-	Bold    bool
-	Faint   bool
-	Italic  bool
-	Blink   bool
-	Reverse bool
-	Conceal bool
-	Strike  bool
+	Content   string
+	Width     int
+	Fg        Color
+	Bg        Color
+	Bold      bool
+	Faint     bool
+	Italic    bool
+	Blink     bool
+	Reverse   bool
+	Conceal   bool
+	Strike    bool
 	Underline bool
 }
 
@@ -48,6 +50,9 @@ type Emulator interface {
 	// IsAltScreen reports whether the child has switched to the alternate
 	// screen buffer.
 	IsAltScreen() bool
+	// IsMouseTracking reports whether the child has enabled VT mouse
+	// tracking (DECSET 1000, 1002, 1003, or 1006).
+	IsMouseTracking() bool
 	ScrollbackLen() int
 	// ScrollbackCell returns the cell at column x of scrolled-off line y
 	// (0 = oldest line). Out-of-range positions return a blank cell.
@@ -59,6 +64,8 @@ type Emulator interface {
 	ClearScrollback()
 	// SetScrollbackSize sets the maximum number of scrollback lines.
 	SetScrollbackSize(maxLines int)
+	// SetCallbacks installs VT callbacks on the underlying emulator.
+	SetCallbacks(cb vt.Callbacks)
 	Close() error
 }
 
@@ -66,8 +73,9 @@ type Emulator interface {
 // underlying accessors return *uv.Cell pointers after releasing their own
 // lock, so dereferencing them must stay under ours.
 type vtEmulator struct {
-	mu   sync.RWMutex
-	term *vt.SafeEmulator
+	mu             sync.RWMutex
+	term           *vt.SafeEmulator
+	mouseModeCount atomic.Int32 // number of active mouse tracking modes
 }
 
 // New creates a terminal emulator with the given grid size.
@@ -208,6 +216,55 @@ func (e *vtEmulator) SetScrollbackSize(maxLines int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.term.SetScrollbackSize(maxLines)
+}
+
+// mouseTrackingModes lists the DEC mouse-tracking modes that, when any is
+// set, mean the child process wants to receive mouse events as VT sequences.
+var mouseTrackingModes = []ansi.DECMode{
+	ansi.ModeMouseX10,         // ?9
+	ansi.ModeMouseNormal,      // ?1000
+	ansi.ModeMouseButtonEvent, // ?1002
+	ansi.ModeMouseAnyEvent,    // ?1003
+}
+
+// SetCallbacks installs VT callbacks on the underlying emulator to track
+// mouse mode changes. The wrapped callbacks update mouseModeCount atomically
+// so the main loop can check it without locking.
+func (e *vtEmulator) SetCallbacks(cb vt.Callbacks) {
+	origEnable := cb.EnableMode
+	origDisable := cb.DisableMode
+	cb.EnableMode = func(mode ansi.Mode) {
+		for _, m := range mouseTrackingModes {
+			if mode == m {
+				e.mouseModeCount.Add(1)
+				break
+			}
+		}
+		if origEnable != nil {
+			origEnable(mode)
+		}
+	}
+	cb.DisableMode = func(mode ansi.Mode) {
+		for _, m := range mouseTrackingModes {
+			if mode == m {
+				if n := e.mouseModeCount.Load(); n > 0 {
+					e.mouseModeCount.Add(-1)
+				}
+				break
+			}
+		}
+		if origDisable != nil {
+			origDisable(mode)
+		}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.term.SetCallbacks(cb)
+}
+
+// IsMouseTracking reports whether any VT mouse tracking mode is active.
+func (e *vtEmulator) IsMouseTracking() bool {
+	return e.mouseModeCount.Load() > 0
 }
 
 // fromColor converts a color into our renderer's representation. Colors that
