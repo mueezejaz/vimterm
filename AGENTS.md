@@ -4,7 +4,7 @@ Windows-only Vim-like terminal emulator: spawns a shell in a ConPTY, renders its
 
 ## Commands
 
-- Build: `go build -o vimterm.exe .`
+ - Build: `go build -o vimterm.exe .`
 - Test all: `go test ./...` (~50 s; `internal/app` alone ~12 s)
 - Single test: `go test ./internal/app -run TestPasteWithCount`
 - Formatting: plain `gofmt`; no linter is configured, but gofmt-clean matters (see commit history).
