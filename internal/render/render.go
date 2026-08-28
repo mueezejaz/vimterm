@@ -36,6 +36,25 @@ func NewFrame(cols, rows int) *Frame {
 	return &Frame{Cols: cols, Rows: rows, Cells: cells, CursorVisible: true}
 }
 
+// ResetFrame clears an existing frame in-place when dimensions match,
+// avoiding reallocation of the cell grid.
+func (f *Frame) ResetFrame(cols, rows int) bool {
+	if f.Cols != cols || f.Rows != rows {
+		return false
+	}
+	def := emulator.Color{Default: true}
+	for y := range f.Cells {
+		row := f.Cells[y]
+		for x := range row {
+			row[x] = emulator.Cell{Fg: def, Bg: def}
+		}
+	}
+	f.CursorX = 0
+	f.CursorY = 0
+	f.CursorVisible = true
+	return true
+}
+
 const (
 	escHideCursor = "\x1b[?25l"
 	escShowCursor = "\x1b[?25h"
@@ -280,43 +299,57 @@ func styleOf(c emulator.Cell) style {
 }
 
 func writeStyle(sb *strings.Builder, st style) {
-	var codes []string
+	started := false
+	writeCode := func(code string) {
+		if started {
+			sb.WriteByte(';')
+		} else {
+			sb.WriteString("\x1b[")
+			started = true
+		}
+		sb.WriteString(code)
+	}
+	writeRGB := func(prefix string, c emulator.Color) {
+		writeCode(prefix)
+		sb.WriteString(itoa(int(c.R)))
+		sb.WriteByte(';')
+		sb.WriteString(itoa(int(c.G)))
+		sb.WriteByte(';')
+		sb.WriteString(itoa(int(c.B)))
+	}
 	if st.attrs&attrBold != 0 {
-		codes = append(codes, "1")
+		writeCode("1")
 	}
 	if st.attrs&attrFaint != 0 {
-		codes = append(codes, "2")
+		writeCode("2")
 	}
 	if st.attrs&attrItalic != 0 {
-		codes = append(codes, "3")
+		writeCode("3")
 	}
 	if st.attrs&attrUnderline != 0 {
-		codes = append(codes, "4")
+		writeCode("4")
 	}
 	if st.attrs&attrBlink != 0 {
-		codes = append(codes, "5")
+		writeCode("5")
 	}
 	if st.attrs&attrReverse != 0 {
-		codes = append(codes, "7")
+		writeCode("7")
 	}
 	if st.attrs&attrConceal != 0 {
-		codes = append(codes, "8")
+		writeCode("8")
 	}
 	if st.attrs&attrStrike != 0 {
-		codes = append(codes, "9")
+		writeCode("9")
 	}
 	if !st.fg.Default {
-		codes = append(codes, fgRGB(st.fg))
+		writeRGB("38;2;", st.fg)
 	}
 	if !st.bg.Default {
-		codes = append(codes, bgRGB(st.bg))
+		writeRGB("48;2;", st.bg)
 	}
-	if len(codes) == 0 {
-		return
+	if started {
+		sb.WriteByte('m')
 	}
-	sb.WriteString("\x1b[")
-	sb.WriteString(strings.Join(codes, ";"))
-	sb.WriteByte('m')
 }
 
 func fgRGB(c emulator.Color) string {
