@@ -30,6 +30,9 @@ type Engine struct {
 	lastKey     time.Time
 	flushed     bool
 	lastSeq     []Key // the full sequence that produced the last Matched
+
+	// candidate is a reusable buffer for Feed to avoid per-call allocation.
+	candidate []Key
 }
 
 // NewEngine creates an engine with no keymaps.
@@ -76,14 +79,15 @@ func (e *Engine) Feed(mode string, k Key) (Result, []Action) {
 		}
 	}
 
-	candidate := make([]Key, 0, len(e.pending)+1)
+	// Build candidate without allocating: reuse the e.candidate buffer.
+	candidate := e.candidate[:0]
 	candidate = append(candidate, e.pending...)
 	candidate = append(candidate, k)
 
 	// Prefer waiting for a longer binding when the candidate is both an exact
 	// match and a prefix (e.g. "g" alone vs. "gg"), like Vim does.
 	if km.IsPrefix(candidate) {
-		e.pending = candidate
+		e.pending = append(e.pending[:0], candidate...)
 		e.pendingMode = mode
 		e.lastKey = time.Now()
 		return Waiting, nil
@@ -98,7 +102,7 @@ func (e *Engine) Feed(mode string, k Key) (Result, []Action) {
 	e.pending = e.pending[:0]
 	e.flushed = true
 	if km.IsPrefix([]Key{k}) {
-		e.pending = []Key{k}
+		e.pending = append(e.pending[:0], k)
 		e.pendingMode = mode
 		e.lastKey = time.Now()
 		return Waiting, nil
