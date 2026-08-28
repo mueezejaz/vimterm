@@ -1,15 +1,55 @@
 package app
 
 import (
+	"fmt"
+	"os"
+	"sync"
+	"time"
+
 	"vimterm/internal/console"
 	"vimterm/internal/mode"
 	"vimterm/internal/selection"
 )
 
-// handleMouse routes console mouse events: clicks position the cursor,
-// drags build a selection, the wheel scrolls the viewport, and double
-// clicks select the word under the pointer.
+var (
+	mouseLog     *os.File
+	mouseLogOnce sync.Once
+)
+
+func mouseDebugLog(format string, args ...any) {
+	mouseLogOnce.Do(func() {
+		var err error
+		mouseLog, err = os.CreateTemp("", "vimterm-mouse-debug-*.log")
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(mouseLog, "vimterm mouse debug log started at %s\n", time.Now())
+		fmt.Fprintf(mouseLog, "log file: %s\n", mouseLog.Name())
+		mouseLog.Sync()
+	})
+	if mouseLog == nil {
+		return
+	}
+	fmt.Fprintf(mouseLog, format+"\n", args...)
+	mouseLog.Sync()
+}
+
+// handleMouse routes console mouse events: when the child has enabled VT
+// mouse tracking OR is running a full-screen app in the alternate screen
+// buffer, events are encoded as SGR sequences and forwarded to the PTY.
+// Otherwise clicks position the cursor, drags build a selection, the wheel
+// scrolls the viewport, and double clicks select the word under the pointer.
 func (a *App) handleMouse(e console.MouseEvent) {
+	mouseMode := a.mouseMode.Load()
+	altScreen := a.emu.IsAltScreen()
+	mouseDebugLog("MOUSE EVENT: btn=%d x=%d y=%d down=%v drag=%v double=%v mods=%d | mouseMode=%d altScreen=%v",
+		e.Button, e.X, e.Y, e.Down, e.Drag, e.Double, e.Modifiers, mouseMode, altScreen)
+
+	if mouseMode != 0 || altScreen {
+		a.mousePassthrough(e)
+		return
+	}
+
 	switch e.Button {
 	case console.MouseWheelUp:
 		a.mouseScroll(1)
@@ -36,6 +76,25 @@ func (a *App) handleMouse(e console.MouseEvent) {
 			a.sel.Cancel()
 			a.dirty.Store(true)
 		}
+	}
+}
+
+// mousePassthrough encodes a mouse event as an SGR VT sequence and writes
+// it to the PTY so the child process receives it.
+func (a *App) mousePassthrough(e console.MouseEvent) {
+	vt := console.MouseToVT(e)
+	if len(vt) == 0 {
+		mouseDebugLog("PASSTHROUGH: empty VT sequence, skipping")
+		return
+	}
+
+	mouseDebugLog("PASSTHROUGH: writing %d bytes: %q (hex: %x)", len(vt), string(vt), vt)
+	n, err := a.sess.Write(vt)
+	if err != nil {
+		mouseDebugLog("PASSTHROUGH: ERROR writing: %v", err)
+		a.setStatusMsg("mouse write error: " + err.Error())
+	} else {
+		mouseDebugLog("PASSTHROUGH: wrote %d bytes successfully", n)
 	}
 }
 

@@ -20,6 +20,9 @@ import (
 	"vimterm/internal/screen"
 	"vimterm/internal/search"
 	"vimterm/internal/selection"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 )
 
 // App is the top-level application state.
@@ -115,6 +118,7 @@ type App struct {
 	cfgMu sync.RWMutex
 
 	dirty         atomic.Bool
+	mouseMode     atomic.Int32 // 0=off, 1=on; updated by vt callbacks
 	once          sync.Once
 	screenCleared bool
 	screenCols    int
@@ -128,6 +132,8 @@ func Run(ctx context.Context, cfg *config.Config, configPath string) error {
 	if err != nil {
 		return err
 	}
+	// Log the debug log file path so the user can find it.
+	mouseDebugLog("vimterm started, mouse debug log active")
 	defer a.cleanup()
 	// Restore the console before letting a panic propagate: leaving the
 	// host terminal in raw mode (no echo, no line editing) after a crash
@@ -146,6 +152,12 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 	con, err := console.Init()
 	if err != nil {
 		return nil, err
+	}
+
+	// Wire up mouse debug logging.
+	con.MouseDebug = func(posx, posy int, btnState, flags, ctrlKey, prev uint32) {
+		mouseDebugLog("RAW MOUSE: pos=(%d,%d) btnState=0x%x flags=0x%x ctrlKey=0x%x prev=0x%x",
+			posx, posy, btnState, flags, ctrlKey, prev)
 	}
 
 	cols, rows, err := con.Size()
@@ -210,6 +222,11 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 		})
 	}
 
+	// Show the debug log file path in the status bar.
+	if mouseLog != nil {
+		a.setStatusMsg("mouse debug: " + mouseLog.Name())
+	}
+
 	return a, nil
 }
 
@@ -233,6 +250,17 @@ func (a *App) spawnTab(shell string, args []string, cols, rows int) (*tabState, 
 	}
 	emu := emulator.New(cols, rows)
 	emu.SetScrollbackSize(a.scrollbackSize())
+	emu.SetCallbacks(vt.Callbacks{
+		EnableMode: func(mode ansi.Mode) {
+			// Sync App-level flag from the emulator's authoritative count.
+			a.mouseMode.Store(boolToInt(emu.IsMouseTracking()))
+			mouseDebugLog("VT ENABLE: mode=%v mouseTracking=%v", mode, emu.IsMouseTracking())
+		},
+		DisableMode: func(mode ansi.Mode) {
+			a.mouseMode.Store(boolToInt(emu.IsMouseTracking()))
+			mouseDebugLog("VT DISABLE: mode=%v mouseTracking=%v", mode, emu.IsMouseTracking())
+		},
+	})
 	t := newTabState(sess, emu, rows)
 	t.search = search.New(a.bufferLineCells)
 	t.cols, t.rows = cols, rows
@@ -599,6 +627,7 @@ func (a *App) renderFrame(frame *render.Frame) {
 	// full height so its own status line lands on the bottom row, where
 	// vimterm's transient messages can overlay it.
 	if alt := a.emu.IsAltScreen(); alt != a.altScreen {
+		mouseDebugLog("ALT SCREEN: %v -> %v", a.altScreen, alt)
 		a.altScreen = alt
 		a.applyChildRows(a.screenCols, a.screenRows)
 		a.curValid = false
@@ -733,6 +762,8 @@ func (a *App) applyChildRows(cols, rows int) {
 	if t.cols == cols && t.rows == termRows {
 		return
 	}
+	mouseDebugLog("RESIZE: ConPTY %dx%d -> %dx%d (altScreen=%v, hostRows=%d, childRows=%d)",
+		t.cols, t.rows, cols, termRows, a.altScreen, rows, termRows)
 	_ = a.sess.Resize(cols, termRows)
 	a.emu.Resize(cols, termRows)
 	a.vp.SetRows(termRows)
@@ -964,6 +995,16 @@ func (a *App) restartShell() {
 	old := t.sess
 	emu := emulator.New(cols, termRows)
 	emu.SetScrollbackSize(a.scrollbackSize())
+	emu.SetCallbacks(vt.Callbacks{
+		EnableMode: func(mode ansi.Mode) {
+			a.mouseMode.Store(boolToInt(emu.IsMouseTracking()))
+			mouseDebugLog("VT ENABLE (restart): mode=%v mouseTracking=%v", mode, emu.IsMouseTracking())
+		},
+		DisableMode: func(mode ansi.Mode) {
+			a.mouseMode.Store(boolToInt(emu.IsMouseTracking()))
+			mouseDebugLog("VT DISABLE (restart): mode=%v mouseTracking=%v", mode, emu.IsMouseTracking())
+		},
+	})
 	a.setSessionMaterial(sess, emu)
 	a.vp.GotoBottom()
 	a.search.Clear()
@@ -983,6 +1024,14 @@ func (a *App) restartShell() {
 		_ = old.Close()
 	}()
 	a.setStatusMsg("shell restarted")
+}
+
+// boolToInt returns 1 if b is true, 0 otherwise.
+func boolToInt(b bool) int32 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // modeName maps a mode to its config keymap name.

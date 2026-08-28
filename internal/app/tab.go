@@ -107,6 +107,11 @@ func (a *App) loadTab(i int) {
 	a.mouseAnchor = t.mouseAnchor
 	a.altScreen = t.altScreen
 	a.preSearchOffset = t.preSearchOffset
+	if t.emu.IsMouseTracking() {
+		a.mouseMode.Store(1)
+	} else {
+		a.mouseMode.Store(0)
+	}
 }
 
 // switchTo stores the current tab and activates index i, reapplying child
