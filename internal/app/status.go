@@ -1,7 +1,7 @@
 package app
 
 import (
-	"fmt"
+	"strings"
 
 	"vimterm/internal/emulator"
 	"vimterm/internal/mode"
@@ -18,32 +18,44 @@ var (
 // more than one is open; the active label is reversed), and shell/cursor
 // information on the right.
 func statusLine(row []emulator.Cell, m mode.Mode, msg, shell string, cx, cy int, fg, bg emulator.Color, labels []string, active int) {
-	left := fmt.Sprintf(" %s ", m)
+	// Build left string without fmt.Sprintf.
+	var left strings.Builder
+	left.WriteByte(' ')
+	left.WriteString(m.String())
+	left.WriteByte(' ')
 	if msg != "" {
-		left += msg
+		left.WriteString(msg)
 	}
-	right := fmt.Sprintf(" %s  %d,%d ", shell, cy+1, cx+1)
+
+	// Build right string without fmt.Sprintf.
+	var right strings.Builder
+	right.WriteByte(' ')
+	right.WriteString(shell)
+	right.WriteString("  ")
+	right.WriteString(itoa(cy + 1))
+	right.WriteByte(',')
+	right.WriteString(itoa(cx + 1))
+	right.WriteByte(' ')
+
+	leftStr := left.String()
+	rightStr := right.String()
+	leftRunes := []rune(leftStr)
+	rightRunes := []rune(rightStr)
 
 	for i := range row {
 		row[i] = emulator.Cell{Content: " ", Width: 1, Fg: fg, Bg: bg}
 	}
-	leftRunes := []rune(left)
 	for i, r := range leftRunes {
 		if i >= len(row) {
 			break
 		}
 		row[i] = statusCell(r, fg, bg)
 	}
-	rightRunes := []rune(right)
 	rightStart := len(row) - len(rightRunes)
 	if rightStart < 0 {
-		// The row is narrower than the right text; start at the first column
-		// so the loop below truncates instead of indexing out of range.
 		rightStart = 0
 	}
 	if leftLen := len(leftRunes); leftLen < len(row) && rightStart < leftLen {
-		// The right side would overlap the mode indicator: clamp it to the
-		// columns right of the left text so narrow terminals keep both.
 		rightStart = leftLen
 	}
 	for i, r := range rightRunes {
@@ -127,8 +139,13 @@ func mergeAllowed(row []emulator.Cell, mode string) bool {
 // left edge of the row, and the rest of the app's status line stays
 // untouched.
 func overlayStatusMessage(row []emulator.Cell, m mode.Mode, msg string, fg, bg emulator.Color) {
-	left := fmt.Sprintf(" %s %s ", m, msg)
-	for i, r := range []rune(left) {
+	var left strings.Builder
+	left.WriteByte(' ')
+	left.WriteString(m.String())
+	left.WriteByte(' ')
+	left.WriteString(msg)
+	left.WriteByte(' ')
+	for i, r := range []rune(left.String()) {
 		if i >= len(row) {
 			return
 		}
