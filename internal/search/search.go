@@ -27,6 +27,11 @@ type Search struct {
 	query   []rune
 	matches []Match
 	gen     int // output generation covered by matches (-1 = none/stale)
+
+	// reusable buffers to avoid per-call allocations
+	lowQuery []rune
+	lineBuf  []rune
+	lowerBuf []rune
 }
 
 // New creates a Search over the given line provider.
@@ -82,7 +87,8 @@ func (s *Search) recompute(gen int) {
 	if len(s.query) == 0 || s.line == nil {
 		return
 	}
-	low := lower(s.query)
+	s.lowQuery = lowerInto(s.lowQuery[:0], s.query)
+	low := s.lowQuery
 	// A new batch can appear while we scan; clamp per line read.
 	for l := 0; ; l++ {
 		cells := s.line(l)
@@ -105,7 +111,8 @@ func (s *Search) recompute(gen int) {
 		if len(runes) == 0 {
 			continue
 		}
-		text := lower(runes)
+		s.lowerBuf = lowerInto(s.lowerBuf[:0], runes)
+		text := s.lowerBuf
 		// Collect every occurrence, not just the first: navigation must
 		// reach same-line duplicates that Highlight shows.
 		for from := 0; ; {
@@ -153,14 +160,25 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int) {
 	if len(s.query) == 0 {
 		return
 	}
-	runes := make([]rune, 0, len(line))
+	// Reuse the pre-lowered query buffer.
+	if len(s.lowQuery) != len(s.query) || !equalRunes(s.lowQuery, lowerInto(nil, s.query)) {
+		s.lowQuery = lowerInto(s.lowQuery[:0], s.query)
+	}
+	low := s.lowQuery
+
+	// Build the line's rune representation, reusing buffers.
+	s.lineBuf = s.lineBuf[:0]
 	for _, c := range line {
 		for _, r := range c.Content {
-			runes = append(runes, r)
+			s.lineBuf = append(s.lineBuf, r)
 		}
 	}
-	low := lower(s.query)
-	text := lower(runes)
+	if len(s.lineBuf) == 0 {
+		return
+	}
+	s.lowerBuf = lowerInto(s.lowerBuf[:0], s.lineBuf)
+	text := s.lowerBuf
+
 	for from := 0; ; {
 		idx := indexFrom(text, low, from)
 		if idx < 0 {
@@ -181,11 +199,27 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int) {
 }
 
 func lower(r []rune) []rune {
-	out := make([]rune, len(r))
-	for i, x := range r {
-		out[i] = unicode.ToLower(x)
+	return lowerInto(nil, r)
+}
+
+func lowerInto(dst, src []rune) []rune {
+	dst = dst[:0]
+	for _, x := range src {
+		dst = append(dst, unicode.ToLower(x))
 	}
-	return out
+	return dst
+}
+
+func equalRunes(a, b []rune) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // toLower is kept for callers that need a single rune; it delegates to the
