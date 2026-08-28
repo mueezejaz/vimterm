@@ -494,7 +494,9 @@ func (a *App) loop(ctx context.Context) error {
 				continue
 			}
 			if !haveFrame || frame.Cols != a.screenCols || frame.Rows != a.screenRows {
-				frame = render.NewFrame(a.screenCols, a.screenRows)
+				if !haveFrame || !frame.ResetFrame(a.screenCols, a.screenRows) {
+					frame = render.NewFrame(a.screenCols, a.screenRows)
+				}
 				haveFrame = true
 			}
 			a.renderFrame(frame)
@@ -639,6 +641,14 @@ func (a *App) renderFrame(frame *render.Frame) {
 	rows, cols := a.emu.Height(), a.emu.Width()
 	bufBottom := sbLen + rows - 1
 
+	// Batch-read the live screen cells under a single emulator lock.
+	screenBuf := make([]emulator.Cell, rows*cols)
+	if rows > 0 && cols > 0 {
+		a.emu.ReadCells(0, 0, cols, rows, screenBuf)
+	}
+	var sbRow []emulator.Cell
+	var sbRowLine int = -1
+
 	for y := 0; y < rows; y++ {
 		absLine := bufBottom - offset - (rows - 1 - y)
 		for x := 0; x < cols; x++ {
@@ -647,9 +657,15 @@ func (a *App) renderFrame(frame *render.Frame) {
 			case absLine < 0:
 				c = emulator.Cell{Content: " ", Width: 1}
 			case absLine < sbLen:
-				c = a.emu.ScrollbackCell(x, absLine)
+				// Cache scrollback row reads (one lock per visible line).
+				if absLine != sbRowLine {
+					sbRow = make([]emulator.Cell, cols)
+					a.emu.ReadScrollbackCells(0, absLine, cols, sbRow)
+					sbRowLine = absLine
+				}
+				c = sbRow[x]
 			default:
-				c = a.emu.Cell(x, absLine-sbLen)
+				c = screenBuf[(absLine-sbLen)*cols+x]
 			}
 			frame.Cells[y][x] = c
 		}
