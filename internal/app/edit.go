@@ -83,6 +83,9 @@ func (a *App) deleteWord(dir int) {
 		at = from
 		curCell = cellFrom
 		deleted++
+		if dir < 0 && from == to {
+			break
+		}
 	}
 	a.cur.Line, a.cur.Col = line, curCell
 	a.clampCursor()
