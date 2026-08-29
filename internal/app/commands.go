@@ -13,6 +13,8 @@ var builtinCommands = map[string]bool{
 	"close":    true,
 	"tabclose": true,
 	"rename":   true,
+	"noh":      true,
+	"nohlsearch": true,
 }
 
 // parseCommand splits a command line into name and arguments. Empty or
@@ -64,6 +66,11 @@ func (a *App) execCommand(line string) {
 		return
 	case "rename":
 		a.renameTab(strings.Join(args, " "))
+		return
+	case "noh", "nohlsearch":
+		a.search.Clear()
+		a.dirty.Store(true)
+		a.setStatusMsg("")
 		return
 	}
 	if seq, ok := a.customCommand(name); ok {
