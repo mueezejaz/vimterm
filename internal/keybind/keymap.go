@@ -140,6 +140,7 @@ func NewKeymap() *Keymap {
 func (km *Keymap) Bind(seq []Key, as ...Action) {
 	n := km.root
 	for _, k := range seq {
+		k = normalizeKey(k)
 		child, ok := n.children[k]
 		if !ok {
 			child = &kmNode{children: make(map[Key]*kmNode)}
@@ -150,11 +151,22 @@ func (km *Keymap) Bind(seq []Key, as ...Action) {
 	n.actions = append([]Action(nil), as...)
 }
 
+// normalizeKey strips ModShift from printable rune keys: the rune itself
+// already encodes the shifted form (e.g. ':' is Shift+';'), so a Shift
+// modifier is redundant and can cause mismatches between input paths that
+// report it (legacy console) and paths that don't (VT input).
+func normalizeKey(k Key) Key {
+	if k.Code == CodeRune {
+		k.Mods &^= ModShift
+	}
+	return k
+}
+
 // Lookup returns the actions bound to the exact sequence, if any.
 func (km *Keymap) Lookup(seq []Key) ([]Action, bool) {
 	n := km.root
 	for _, k := range seq {
-		child, ok := n.children[k]
+		child, ok := n.children[normalizeKey(k)]
 		if !ok {
 			return nil, false
 		}
@@ -170,7 +182,7 @@ func (km *Keymap) Lookup(seq []Key) ([]Action, bool) {
 func (km *Keymap) IsPrefix(seq []Key) bool {
 	n := km.root
 	for _, k := range seq {
-		child, ok := n.children[k]
+		child, ok := n.children[normalizeKey(k)]
 		if !ok {
 			return false
 		}
