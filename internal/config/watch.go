@@ -15,11 +15,13 @@ func Watch(path string, interval time.Duration, cb func(*Config, error)) func() 
 		// loaded and applied it, and zero baselines would fire a spurious
 		// reload on the first tick.
 		lastMod, lastSize := statFile(path)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-stop:
 				return
-			case <-time.After(interval):
+			case <-ticker.C:
 			mod, size := statFile(path)
 			if mod.Equal(lastMod) && size == lastSize {
 				continue
