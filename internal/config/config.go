@@ -338,13 +338,13 @@ func Load(path string) (*Config, error) {
 	if probe.Colors.StatusBg != nil {
 		cfg.Colors.StatusBg = *probe.Colors.StatusBg
 	}
-	if probe.Keybindings.Normal != nil {
+	if probe.Keybindings.Normal != nil && len(*probe.Keybindings.Normal) > 0 {
 		cfg.Keybindings.Normal = *probe.Keybindings.Normal
 	}
-	if probe.Keybindings.Insert != nil {
+	if probe.Keybindings.Insert != nil && len(*probe.Keybindings.Insert) > 0 {
 		cfg.Keybindings.Insert = *probe.Keybindings.Insert
 	}
-	if probe.Keybindings.Visual != nil {
+	if probe.Keybindings.Visual != nil && len(*probe.Keybindings.Visual) > 0 {
 		cfg.Keybindings.Visual = *probe.Keybindings.Visual
 	}
 	if probe.Commands != nil {
