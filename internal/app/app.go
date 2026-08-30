@@ -1007,7 +1007,7 @@ func (a *App) restartShell() {
 	}
 	t := a.tabs[a.active]
 	t.gen.Add(1)
-	t.err = atomic.Value{} // drop the old session's read error, if any
+	t.err.Store(nil) // clear the old session's read error, if any
 	old := t.sess
 	emu := emulator.New(cols, termRows)
 	emu.SetScrollbackSize(a.scrollbackSize())
