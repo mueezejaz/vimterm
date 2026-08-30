@@ -226,9 +226,11 @@ func firstDiff(row, old []emulator.Cell) int {
 
 // oldTailSignificant reports whether the previously drawn row had any
 // significant cell at or beyond from, so stale content would need erasing.
+// Width==0 cells count as significant: they are the visible right half of a
+// wide glyph on the host terminal, even though the renderer itself skips them.
 func oldTailSignificant(old []emulator.Cell, from int) bool {
 	for x := from + 1; x < len(old); x++ {
-		if significant(old[x]) {
+		if old[x].Width == 0 || significant(old[x]) {
 			return true
 		}
 	}
