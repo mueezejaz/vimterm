@@ -52,6 +52,7 @@ const (
 	ActionPrevTab          Action = "prev_tab"
 	ActionNewTab           Action = "new_tab"
 	ActionTabPopup         Action = "tab_search"
+	ActionCloseTab         Action = "close_tab"
 )
 
 // AllActions lists every action the application understands. Config bindings
@@ -104,6 +105,7 @@ var AllActions = []Action{
 	ActionPrevTab,
 	ActionNewTab,
 	ActionTabPopup,
+	ActionCloseTab,
 }
 
 // IsKnownAction reports whether a is a recognized action name.

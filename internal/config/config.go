@@ -190,6 +190,7 @@ func defaultNormalBindings() map[string]Binding {
 		"leader+nt": {"new_tab", "rename_prompt"},
 		"leader+tt": {"tab_search"},
 		"ctrl+q":    {"quit"},
+		"ctrl+w":    {"close_tab"},
 	}
 }
 
@@ -489,6 +490,7 @@ status_bg = ""
 "leader+nt" = ["new_tab", "rename_prompt"]
 "leader+tt" = "tab_search"
 "ctrl+q" = "quit"
+"ctrl+w" = "close_tab"
 
 [keybindings.insert]
 "esc" = "enter_normal"

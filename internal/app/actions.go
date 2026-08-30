@@ -60,6 +60,7 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionPrevTab:          func() { a.countTab(-1) },
 		keybind.ActionNewTab:           a.newTab,
 		keybind.ActionTabPopup:         a.openTabPopup,
+		keybind.ActionCloseTab:         func() { a.closeTab(a.active) },
 	}
 }
 
