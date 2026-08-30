@@ -202,9 +202,7 @@ func (p *vtParser) dispatchCSI(events *[]Event, params string, final byte, consu
 // parseSS3 handles SS3 sequences: ESC O X  (F1–F4) and extended ESC O 1 ; X P.
 func (p *vtParser) parseSS3(buf []byte, events *[]Event) int {
 	if len(buf) < 3 {
-		// Lone ESC O — treat as F1 (default) but need more data for extended.
-		*events = append(*events, KeyEvent{Key: keybind.NewCode(keybind.CodeF1, 0)})
-		return 3
+		return 0 // need more data
 	}
 
 	// Extended SS3: ESC O 1 ; <mod> <letter>

@@ -464,3 +464,50 @@ func TestSGRMouseToEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestVTParserPartialSS3(t *testing.T) {
+	p := &vtParser{}
+
+	// Incomplete SS3: ESC O without the final byte.
+	// Should NOT emit any events — wait for more data.
+	events := p.feed([]byte{0x1b, 'O'})
+	if len(events) != 0 {
+		t.Fatalf("partial SS3: expected 0 events, got %d: %+v", len(events), events)
+	}
+
+	// Complete it — should emit F1.
+	events = p.feed([]byte{'P'})
+	if len(events) != 1 {
+		t.Fatalf("completed SS3: expected 1 event, got %d", len(events))
+	}
+	ke := events[0].(KeyEvent)
+	if ke.Key.Code != keybind.CodeF1 {
+		t.Errorf("expected CodeF1, got %d", ke.Key.Code)
+	}
+}
+
+func TestVTParserPartialSS3FollowedByChar(t *testing.T) {
+	p := &vtParser{}
+
+	// ESC O followed by a non-letter byte (e.g. '1' for extended SS3 modifier).
+	events := p.feed([]byte{0x1b, 'O'})
+	if len(events) != 0 {
+		t.Fatalf("partial SS3: expected 0 events, got %d", len(events))
+	}
+
+	// Feed '1' — still not a final byte, should buffer.
+	events = p.feed([]byte{'1'})
+	if len(events) != 0 {
+		t.Fatalf("still partial SS3: expected 0 events, got %d", len(events))
+	}
+
+	// Feed ';' then '2' then 'P' — extended Shift+F1.
+	events = p.feed([]byte("1;2P"))
+	if len(events) != 1 {
+		t.Fatalf("completed extended SS3: expected 1 event, got %d", len(events))
+	}
+	ke := events[0].(KeyEvent)
+	if ke.Key.Code != keybind.CodeF1 || ke.Key.Mods != keybind.ModShift {
+		t.Errorf("expected Shift+F1, got %+v", ke.Key)
+	}
+}
