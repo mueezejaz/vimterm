@@ -97,13 +97,14 @@ var (
 // Console wraps the Windows console: it puts the host terminal into raw mode,
 // streams input events, and writes VT output.
 type Console struct {
-	in, out   windows.Handle
-	origIn    uint32
-	origOut   uint32
-	origCP    uint32
-	events    chan Event
-	done      chan struct{}
-	closeOnce sync.Once
+	in, out     windows.Handle
+	origIn      uint32
+	origOut     uint32
+	origCP      uint32
+	origInputCP uint32
+	events      chan Event
+	done        chan struct{}
+	closeOnce   sync.Once
 
 	// prevBtnState tracks the last mouse button state for release detection.
 	prevBtnState uint32
@@ -139,6 +140,7 @@ func Init() (*Console, error) {
 	// mojibake (e.g. "Ôåæ" for "↑"). Force UTF-8 on our own console so the
 	// bytes we emit reach the host terminal unchanged.
 	origCP, _ := windows.GetConsoleOutputCP()
+	origInputCP, _ := windows.GetConsoleCP()
 	windows.SetConsoleOutputCP(65001)
 	windows.SetConsoleCP(65001)
 
@@ -181,14 +183,15 @@ func Init() (*Console, error) {
 	}
 
 	c := &Console{
-		in:      in,
-		out:     out,
-		origIn:  origIn,
-		origOut: origOut,
-		origCP:  origCP,
-		events:  make(chan Event, 256),
-		done:    make(chan struct{}),
-		vtIn:    vtOk,
+		in:          in,
+		out:         out,
+		origIn:      origIn,
+		origOut:     origOut,
+		origCP:      origCP,
+		origInputCP: origInputCP,
+		events:      make(chan Event, 256),
+		done:        make(chan struct{}),
+		vtIn:        vtOk,
 	}
 
 	// Initialize input debug logger if enabled.
@@ -268,6 +271,7 @@ func (c *Console) Close() {
 		windows.SetConsoleMode(c.out, c.origOut)
 		windows.SetConsoleMode(c.in, c.origIn)
 		windows.SetConsoleOutputCP(c.origCP)
+		windows.SetConsoleCP(c.origInputCP)
 	})
 }
 
