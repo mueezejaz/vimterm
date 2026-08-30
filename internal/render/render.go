@@ -149,7 +149,7 @@ func (r *Renderer) Draw(w io.Writer, f *Frame) {
 	_, _ = io.WriteString(w, sb.String())
 
 	r.prevCX, r.prevCY, r.prevVis = f.CursorX, f.CursorY, f.CursorVisible
-	if r.prev == nil || len(r.prev) != f.Rows || len(r.prev[0]) != f.Cols {
+	if r.prev == nil || len(r.prev) != f.Rows || (f.Rows > 0 && len(r.prev[0]) != f.Cols) {
 		prev := make([][]emulator.Cell, f.Rows)
 		for y := range prev {
 			prev[y] = make([]emulator.Cell, f.Cols)
