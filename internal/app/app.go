@@ -680,8 +680,13 @@ func (a *App) renderFrame(frame *render.Frame) {
 
 	cx, cy := a.emu.Cursor()
 	if a.insertCursorOverrideOk {
-		cx, cy = a.insertCursorOverride.Col, a.insertCursorOverride.Line-a.emu.ScrollbackLen()
-		a.insertCursorOverrideOk = false
+		targetX := a.insertCursorOverride.Col
+		targetY := a.insertCursorOverride.Line - a.emu.ScrollbackLen()
+		if cy == targetY && cx == targetX {
+			a.insertCursorOverrideOk = false
+		} else {
+			cx, cy = targetX, targetY
+		}
 	}
 	frame.CursorX, frame.CursorY = cx, cy
 	// The host cursor is shown only in insert mode; normal and visual modes
