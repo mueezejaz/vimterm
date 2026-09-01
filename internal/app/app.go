@@ -87,7 +87,11 @@ type App struct {
 	// insertCursorOverride, when valid, overrides the host cursor position
 	// for one render frame so the cursor appears at the intended position
 	// immediately after entering insert mode, rather than briefly flashing
-	// at the stale shell cursor position.
+	// at the stale shell cursor position.  It is cleared either when the
+	// emulator cursor catches up or on the first keystroke in insert mode,
+	// whichever comes first, to avoid freezing the cursor when the shell
+	// cursor was moved via arrow keys (which produce no emulator-visible
+	// output).
 	insertCursorOverride   selection.Pos
 	insertCursorOverrideOk bool
 
@@ -620,6 +624,11 @@ func (a *App) passthrough(k keybind.Key) {
 	if len(bytes) == 0 {
 		return
 	}
+	// Once the user types, the shell echoes the character and the emulator
+	// cursor advances.  The override target is stale at this point (the
+	// shell cursor may have been moved by arrow keys before this), so clear
+	// it to let the cursor follow the real emulator position.
+	a.insertCursorOverrideOk = false
 	if _, err := a.sess.Write(bytes); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 	}
