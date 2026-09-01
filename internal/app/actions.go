@@ -373,6 +373,10 @@ func (a *App) enterInsert() {
 	a.moveShellCursorToVirtual()
 	a.vp.GotoBottom()
 	a.mods.Enter(mode.ModeInsert)
+	// Override the host cursor for one frame so it appears at the intended
+	// position immediately, avoiding a brief flash at the stale shell position.
+	a.insertCursorOverride = a.cur
+	a.insertCursorOverrideOk = true
 	a.curValid = false
 	a.dirty.Store(true)
 }
