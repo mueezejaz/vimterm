@@ -387,6 +387,12 @@ func (a *App) enterInsert() {
 // When the virtual cursor is on a different visual row (e.g. after k/j in a
 // wrapped command), the row difference is converted to a horizontal character
 // offset because the shell line editor treats the command as one logical line.
+//
+// The conversion is only applied when the virtual cursor is within the
+// current command.  A full-width row (last cell non-blank) is always part
+// of a wrapped command; a blank, non-full-width row above the shell cursor
+// row is treated as previous output and the virtual cursor is snapped to the
+// shell position so insert mode starts at the end of the command.
 func (a *App) moveShellCursorToVirtual() {
 	if a.sess == nil || a.vp.Offset() != 0 {
 		return
@@ -400,6 +406,22 @@ func (a *App) moveShellCursorToVirtual() {
 	if a.cur.Line < scrollbackLen {
 		return
 	}
+	// Determine whether the virtual cursor is in the command or on
+	// previous output.  The cursor is on the command if it is on the
+	// same row as the shell cursor, on a full-width row (which is
+	// always a wrapped command line), on a row below the shell cursor
+	// (which may be a continuation of the wrapped command after the
+	// user moved the shell cursor with arrow keys), or on a non-full-
+	// width row above the shell cursor that still contains text (a
+	// short command line, e.g. from an explicit newline).  A blank,
+	// non-full-width row above the shell cursor is previous output —
+	// snap to the shell position so insert mode starts where typing
+	// actually goes.
+	if a.cur.Line < shellAbs && !a.rowIsFullWidth(a.cur.Line) && a.rowIsBlank(a.cur.Line) {
+		a.cur.Line = shellAbs
+		a.cur.Col = cx
+		return
+	}
 	width := a.emu.Width()
 	rowDelta := a.cur.Line - shellAbs
 	// Convert the row difference to a horizontal offset: moving up N rows
@@ -411,6 +433,35 @@ func (a *App) moveShellCursorToVirtual() {
 	if _, err := a.sess.Write(cursorMoveSeq(delta)); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 	}
+}
+
+// rowIsFullWidth reports whether the absolute buffer line fills the entire
+// terminal width: its last cell contains a non-blank character, meaning
+// the text wrapped through the entire row.
+func (a *App) rowIsFullWidth(absLine int) bool {
+	width := a.emu.Width()
+	cells := a.bufferLineCells(absLine)
+	if cells == nil {
+		return false
+	}
+	last := cells[width-1]
+	return last.Content != "" && last.Content != " "
+}
+
+// rowIsBlank reports whether every cell on the absolute buffer line is empty
+// or contains only a space.  This distinguishes blank output rows from short
+// command lines that still contain text.
+func (a *App) rowIsBlank(absLine int) bool {
+	cells := a.bufferLineCells(absLine)
+	if cells == nil {
+		return true
+	}
+	for _, c := range cells {
+		if c.Content != "" && c.Content != " " {
+			return false
+		}
+	}
+	return true
 }
 
 // cursorBlockStyle returns the colors the virtual cursor block should use
