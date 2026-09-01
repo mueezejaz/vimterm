@@ -390,9 +390,9 @@ func (a *App) enterInsert() {
 //
 // The conversion is only applied when the virtual cursor is within the
 // current command.  A full-width row (last cell non-blank) is always part
-// of a wrapped command; a blank, non-full-width row above the shell cursor
+// of a wrapped command; a non-full-width row above the shell cursor
 // row is treated as previous output and the virtual cursor is snapped to the
-// shell position so insert mode starts at the end of the command.
+// shell position so insert mode starts where typing actually goes.
 func (a *App) moveShellCursorToVirtual() {
 	if a.sess == nil || a.vp.Offset() != 0 {
 		return
@@ -411,13 +411,11 @@ func (a *App) moveShellCursorToVirtual() {
 	// same row as the shell cursor, on a full-width row (which is
 	// always a wrapped command line), on a row below the shell cursor
 	// (which may be a continuation of the wrapped command after the
-	// user moved the shell cursor with arrow keys), or on a non-full-
-	// width row above the shell cursor that still contains text (a
-	// short command line, e.g. from an explicit newline).  A blank,
-	// non-full-width row above the shell cursor is previous output —
-	// snap to the shell position so insert mode starts where typing
-	// actually goes.
-	if a.cur.Line < shellAbs && !a.rowIsFullWidth(a.cur.Line) && a.rowIsBlank(a.cur.Line) {
+	// user moved the shell cursor with arrow keys).  Any non-full-
+	// width row above the shell cursor is previous output — snap to
+	// the shell position so insert mode starts where typing actually
+	// goes.
+	if a.cur.Line < shellAbs && !a.rowIsFullWidth(a.cur.Line) {
 		a.cur.Line = shellAbs
 		a.cur.Col = cx
 		return
