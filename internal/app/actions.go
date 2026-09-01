@@ -231,6 +231,30 @@ func (a *App) moveCursor(dl, dc int) {
 	a.syncCursor()
 	a.cur.Line += dl
 	a.cur.Col += dc
+	// When moving only horizontally (h/l), wrap across line boundaries:
+	// left at column 0 goes to the end of the line above; right at the end
+	// of a line goes to the beginning of the line below.
+	if dl == 0 && dc < 0 && a.cur.Col < 0 {
+		if a.cur.Line > 0 {
+			a.cur.Line--
+			if cells := a.bufferLineCells(a.cur.Line); cells != nil {
+				row := rowOf(cells)
+				a.cur.Col = row.colAt(len(row.runes))
+			} else {
+				a.cur.Col = 0
+			}
+		} else {
+			a.cur.Col = 0
+		}
+	} else if dl == 0 && dc > 0 && a.cur.Col >= a.emu.Width() {
+		maxLine := a.emu.ScrollbackLen() + a.emu.Height() - 1
+		if a.cur.Line < maxLine {
+			a.cur.Line++
+			a.cur.Col = 0
+		} else {
+			a.cur.Col = a.emu.Width() - 1
+		}
+	}
 	a.clampCursor()
 	a.ensureCursorVisible()
 	a.afterCursorMove()
