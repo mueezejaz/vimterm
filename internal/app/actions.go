@@ -380,16 +380,27 @@ func (a *App) enterInsert() {
 // moveShellCursorToVirtual nudges the shell's line editor cursor to the
 // virtual cursor by sending relative arrow-key escapes. Relative moves are
 // independent of the prompt prefix, so this works at any prompt width.
+// When the virtual cursor is on a different visual row (e.g. after k/j in a
+// wrapped command), the row difference is converted to a horizontal character
+// offset because the shell line editor treats the command as one logical line.
 func (a *App) moveShellCursorToVirtual() {
 	if a.sess == nil || a.vp.Offset() != 0 {
 		return
 	}
 	a.syncCursor()
 	cx, cy := a.emu.Cursor()
-	if a.emu.ScrollbackLen()+cy != a.cur.Line {
+	scrollbackLen := a.emu.ScrollbackLen()
+	shellAbs := scrollbackLen + cy
+	// If the virtual cursor is in the scrollback region, we cannot move
+	// the shell cursor there.
+	if a.cur.Line < scrollbackLen {
 		return
 	}
-	delta := cx - a.cur.Col
+	width := a.emu.Width()
+	rowDelta := a.cur.Line - shellAbs
+	// Convert the row difference to a horizontal offset: moving up N rows
+	// in a wrapped command is equivalent to moving left by N*width chars.
+	delta := -rowDelta*width + cx - a.cur.Col
 	if delta == 0 {
 		return
 	}

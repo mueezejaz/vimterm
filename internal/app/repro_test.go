@@ -10,7 +10,7 @@ import (
 // byte (0x08) is delivered to the child as Ctrl+Backspace (delete word):
 // backspace must be forwarded as DEL (0x7F), which deletes one character.
 func TestBackspaceInInsertModeBytes(t *testing.T) {
-	a := findApp(t, "abc\r\n")
+	a := newMotionApp(t, 40, 5, "abc\r\n")
 	fs := &fakeSession{}
 	a.sess = fs
 
