@@ -373,15 +373,17 @@ func (a *App) enterInsert() {
 	moved := a.moveShellCursorToVirtual()
 	a.vp.GotoBottom()
 	a.mods.Enter(mode.ModeInsert)
-	// Override the host cursor for one frame so it appears at the intended
-	// position immediately, avoiding a brief flash at the stale shell position.
-	// Skip the override when the shell cursor was moved via arrow keys:
-	// arrow-key movement produces no emulator-visible output, so the
-	// emulator cursor is stale and the override would freeze at the wrong
-	// position until the first keystroke clears it.
+	// Override the host cursor only when the shell cursor was NOT moved and
+	// the emulator cursor does not already match a.cur.  When the emu
+	// already matches, setting the override would cause a one-frame flicker
+	// (set then immediately clear).  When the shell cursor was moved via
+	// arrow keys, the emu is stale and the override would freeze.
 	if !moved {
-		a.insertCursorOverride = a.cur
-		a.insertCursorOverrideOk = true
+		cx, cy := a.emu.Cursor()
+		if cy != a.cur.Line-a.emu.ScrollbackLen() || cx != a.cur.Col {
+			a.insertCursorOverride = a.cur
+			a.insertCursorOverrideOk = true
+		}
 	}
 	a.curValid = false
 	a.dirty.Store(true)
