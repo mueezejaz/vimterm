@@ -84,16 +84,6 @@ type App struct {
 	curValid bool
 	sel      selection.Selection
 
-	// insertCursorOverride, when valid, overrides the host cursor position
-	// for one render frame so the cursor appears at the intended position
-	// immediately after entering insert mode, rather than briefly flashing
-	// at the stale shell cursor position.  It is only set when the shell
-	// cursor is already at the target position (snap or delta == 0), never
-	// when arrow keys were sent to move it (those produce no emulator-
-	// visible output, so the override would freeze at a stale position).
-	insertCursorOverride   selection.Pos
-	insertCursorOverrideOk bool
-
 	// altScreen reports whether the active tab's child is in the alternate
 	// screen (full-screen app such as nvim). While it is, the child gets
 	// the full terminal height and the status line is merged with the
@@ -682,15 +672,6 @@ func (a *App) renderFrame(frame *render.Frame) {
 	}
 
 	cx, cy := a.emu.Cursor()
-	if a.insertCursorOverrideOk {
-		targetX := a.insertCursorOverride.Col
-		targetY := a.insertCursorOverride.Line - a.emu.ScrollbackLen()
-		if cy == targetY && cx == targetX {
-			a.insertCursorOverrideOk = false
-		} else {
-			cx, cy = targetX, targetY
-		}
-	}
 	frame.CursorX, frame.CursorY = cx, cy
 	// The host cursor is shown only in insert mode; normal and visual modes
 	// use the virtual cursor (drawn below). Prompts override this.

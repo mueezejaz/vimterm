@@ -370,21 +370,9 @@ func (a *App) cancelVisual() {
 // typed in insert mode lands exactly where the virtual cursor is.
 func (a *App) enterInsert() {
 	a.sel.Cancel()
-	moved := a.moveShellCursorToVirtual()
+	a.moveShellCursorToVirtual()
 	a.vp.GotoBottom()
 	a.mods.Enter(mode.ModeInsert)
-	// Override the host cursor only when the shell cursor was NOT moved and
-	// the emulator cursor does not already match a.cur.  When the emu
-	// already matches, setting the override would cause a one-frame flicker
-	// (set then immediately clear).  When the shell cursor was moved via
-	// arrow keys, the emu is stale and the override would freeze.
-	if !moved {
-		cx, cy := a.emu.Cursor()
-		if cy != a.cur.Line-a.emu.ScrollbackLen() || cx != a.cur.Col {
-			a.insertCursorOverride = a.cur
-			a.insertCursorOverrideOk = true
-		}
-	}
 	a.curValid = false
 	a.dirty.Store(true)
 }
@@ -403,8 +391,7 @@ func (a *App) enterInsert() {
 // shell position so insert mode starts where typing actually goes.
 //
 // moveShellCursorToVirtual returns true when the shell cursor was moved via
-// arrow keys.  Arrow-key movement produces no emulator-visible output, so
-// the caller must not set insertCursorOverride in that case.
+// arrow keys.
 func (a *App) moveShellCursorToVirtual() bool {
 	if a.sess == nil || a.vp.Offset() != 0 {
 		return false
