@@ -370,13 +370,19 @@ func (a *App) cancelVisual() {
 // typed in insert mode lands exactly where the virtual cursor is.
 func (a *App) enterInsert() {
 	a.sel.Cancel()
-	a.moveShellCursorToVirtual()
+	moved := a.moveShellCursorToVirtual()
 	a.vp.GotoBottom()
 	a.mods.Enter(mode.ModeInsert)
 	// Override the host cursor for one frame so it appears at the intended
 	// position immediately, avoiding a brief flash at the stale shell position.
-	a.insertCursorOverride = a.cur
-	a.insertCursorOverrideOk = true
+	// Skip the override when the shell cursor was moved via arrow keys:
+	// arrow-key movement produces no emulator-visible output, so the
+	// emulator cursor is stale and the override would freeze at the wrong
+	// position until the first keystroke clears it.
+	if !moved {
+		a.insertCursorOverride = a.cur
+		a.insertCursorOverrideOk = true
+	}
 	a.curValid = false
 	a.dirty.Store(true)
 }
@@ -393,9 +399,13 @@ func (a *App) enterInsert() {
 // of a wrapped command; a non-full-width row above the shell cursor
 // row is treated as previous output and the virtual cursor is snapped to the
 // shell position so insert mode starts where typing actually goes.
-func (a *App) moveShellCursorToVirtual() {
+//
+// moveShellCursorToVirtual returns true when the shell cursor was moved via
+// arrow keys.  Arrow-key movement produces no emulator-visible output, so
+// the caller must not set insertCursorOverride in that case.
+func (a *App) moveShellCursorToVirtual() bool {
 	if a.sess == nil || a.vp.Offset() != 0 {
-		return
+		return false
 	}
 	a.syncCursor()
 	cx, cy := a.emu.Cursor()
@@ -404,7 +414,7 @@ func (a *App) moveShellCursorToVirtual() {
 	// If the virtual cursor is in the scrollback region, we cannot move
 	// the shell cursor there.
 	if a.cur.Line < scrollbackLen {
-		return
+		return false
 	}
 	// Determine whether the virtual cursor is in the command or on
 	// previous output.  The cursor is on the command if it is on the
@@ -418,7 +428,7 @@ func (a *App) moveShellCursorToVirtual() {
 	if a.cur.Line < shellAbs && !a.rowIsFullWidth(a.cur.Line) {
 		a.cur.Line = shellAbs
 		a.cur.Col = cx
-		return
+		return false
 	}
 	width := a.emu.Width()
 	rowDelta := a.cur.Line - shellAbs
@@ -426,11 +436,12 @@ func (a *App) moveShellCursorToVirtual() {
 	// in a wrapped command is equivalent to moving left by N*width chars.
 	delta := -rowDelta*width + cx - a.cur.Col
 	if delta == 0 {
-		return
+		return false
 	}
 	if _, err := a.sess.Write(cursorMoveSeq(delta)); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 	}
+	return true
 }
 
 // rowIsFullWidth reports whether the absolute buffer line fills the entire
