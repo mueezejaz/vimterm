@@ -82,10 +82,16 @@ func (e Easing) easeInverse(u float64) float64 {
 // Mask narrows the ghost to quarters of the cell so sweep edges render
 // smoothly: bit0 upper-left, bit1 upper-right, bit2 lower-left, bit3
 // lower-right; 0 paints the whole cell.
+// BrailleMask is an 8-bit braille dot pattern (U+2800+mask) for 2x4
+// sub-cell rendering; when nonzero it takes precedence over Mask.
+// MinDist records the closest distance any dot in this cell got to the
+// centerline, used for soft edge fading.
 type Ghost struct {
-	X, Line int
-	Opacity float64 // 1.0 = full, 0.0 = invisible
-	Mask    uint8
+	X, Line     int
+	Opacity     float64 // 1.0 = full, 0.0 = invisible
+	Mask        uint8
+	BrailleMask uint8   // 2x4 braille dots; 0 = use quarter-cell Mask
+	MinDist     float64 // closest dot-to-centerline distance for edge fade
 }
 
 // Config holds trail parameters.
@@ -340,15 +346,24 @@ func (t *Trail) Ghosts(now time.Time) []Ghost {
 	return result
 }
 
+// sweepHalfWidth is the sweep band's half-thickness in column units (rows
+// counted double, matching the on-screen cell aspect). It controls how far
+// from the centerline a braille dot can be and still be covered. Dots are
+// spaced 0.5 units apart in both directions, so half must exceed 0.5 to
+// ensure interior cells get full braille coverage while edge cells get
+// partial fringes. 1.0 gives a comfortable margin for 2×4 braille and
+// produces a smooth-looking diagonal with soft edge fading.
+const sweepHalfWidth = 1.0
+
 // sweepGhosts rasterizes a jump's swept band into per-cell ghosts at
-// quarter-cell resolution. The band is the straight segment between the two
-// cursor-cell centers, widened perpendicular to the motion by the cursor's
-// own extent, with rows counted double so the geometry matches the on-screen
-// cell aspect: horizontal motion smears a row tall, vertical motion a column
-// wide, diagonals in between. Every covered quarter joins its cell's mask,
-// and its fade starts when the eased motion reaches it — the band's head
-// chases the cursor while the tail fades at the origin. The departed origin
-// cell is skipped: the plain departure ghost owns that cell.
+// quarter-cell resolution. The band is a thin straight segment between the
+// two cursor-cell centers — thin enough that diagonals render as one line
+// of quarter-blocks instead of a fat staircase — with rows counted double
+// so the geometry matches the on-screen cell aspect. Every covered quarter
+// joins its cell's mask, and its fade starts when the eased motion reaches
+// it — the band's head chases the cursor while the tail fades at the
+// origin. The departed origin cell is skipped: the plain departure ghost
+// owns that cell.
 func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 	dur := t.cfg.Duration
 	// Cursor centers, rows doubled so one row = two column units.
@@ -359,93 +374,136 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 	if segLen < 1 {
 		return nil
 	}
-	// Half-thickness: the cursor rectangle (half a column by one row, i.e.
-	// half-extents 0.5 x 1.0) projected onto the band's normal.
-	nx, ny := -dy/segLen, dx/segLen
-	half := 0.5*math.Abs(nx) + math.Abs(ny)
+	half := sweepHalfWidth
 
 	type acc struct {
-		mask uint8
-		op   float64
+		braille uint8
+		op      float64
+		minS    float64 // minimum path parameter among contributing samples
+		minDist float64 // closest any dot in this cell got to the centerline
 	}
 	cells := map[[2]int]*acc{}
-	add := func(cx, cy float64) {
-		if cx < 0 || cy < 0 {
+
+	// fillCell computes which of the 8 braille dots in a cell fall within
+	// the sweep band and ORs them into the cell's accumulator. The band
+	// is the set of points whose distance to the centerline ≤ half.
+	// cellS overrides the stagger parameter; pass -1 to auto-compute
+	// from the cell center's projection (used for neighbor cells).
+	fillCell := func(cellX, cellY int, cellS float64) {
+		if cellX < 0 || cellY < 0 {
 			return
 		}
-		s := ((cx-px)*dx + (cy-py)*dy) / segLen
-		if s < 0 || s > segLen {
-			return
-		}
-		if perp := math.Abs((cx-px)*dy-(cy-py)*dx) / segLen; perp > half {
-			return
-		}
-		cellX, cellY := int(cx), int(cy/2)
 		if cellX == e.x && cellY == e.line {
 			return
 		}
-		colBit := int(cx*2) % 2
-		rowBit := int(cy) % 2
-		bit := uint8(1) << (rowBit*2 + colBit)
-		age := now.Sub(e.t)
-		if e.stagger {
-			u := s / segLen
-			age = now.Sub(e.t.Add(time.Duration(float64(t.sweepWindow()) * t.cfg.Easing.easeInverse(u))))
-		}
-		if age < 0 {
+		// Reject cells whose center projects far beyond the segment
+		// endpoints.
+		cx := float64(cellX) + 0.5
+		cy := float64(cellY)*2 + 1
+		ax := (cx-px)*dx + (cy-py)*dy
+		if ax < -half*segLen || ax > segLen*segLen+half*segLen {
 			return
 		}
-		op := 1.0 - t.cfg.Easing.apply(float64(age)/float64(dur))
-		if op <= 0 {
+		if cellS < 0 {
+			cellS = ax / (segLen * segLen)
+			if cellS < 0 {
+				cellS = 0
+			}
+			if cellS > 1 {
+				cellS = 1
+			}
+		}
+		var dotMask uint8
+		closestDist := half
+		for row := 0; row < 4; row++ {
+			for col := 0; col < 2; col++ {
+				// Braille dot center in the coordinate system (rows doubled).
+				dotX := float64(cellX) + float64(col)*0.5 + 0.25
+				dotY := float64(cellY)*2 + float64(row)*0.5 + 0.25
+				// Project dot onto centerline, clamp to segment.
+				dxp := dotX - px
+				dyp := dotY - py
+				proj := (dxp*dx + dyp*dy) / (segLen * segLen)
+				if proj < 0 {
+					proj = 0
+				}
+				if proj > 1 {
+					proj = 1
+				}
+				onX := px + dx*proj
+				onY := py + dy*proj
+				dist := math.Hypot(dotX-onX, dotY-onY)
+				if dist <= half {
+					dotMask |= 1 << (row*2 + col)
+					if dist < closestDist {
+						closestDist = dist
+					}
+				}
+			}
+		}
+		if dotMask == 0 {
 			return
 		}
 		key := [2]int{cellX, cellY}
 		a := cells[key]
 		if a == nil {
-			a = &acc{}
+			a = &acc{minS: cellS, minDist: closestDist}
 			cells[key] = a
 		}
-		a.mask |= bit
-		if op > a.op {
-			a.op = op
+		a.braille |= dotMask
+		if cellS < a.minS {
+			a.minS = cellS
+		}
+		if closestDist < a.minDist {
+			a.minDist = closestDist
 		}
 	}
-	// Walk along the dominant axis so the per-step slice stays narrow, and
-	// bracket the walk with min/max — the jump may point either way.
-	if math.Abs(dx) >= math.Abs(dy) {
-		lo, hi := px, qx
-		if hi < lo {
-			lo, hi = hi, lo
-		}
-		hw := half * segLen / math.Abs(dx)
-		for x := int(math.Floor(lo)) - 2; x <= int(math.Floor(hi))+2; x++ {
-			for _, off := range [2]float64{0.25, 0.75} {
-				cx := float64(x) + off
-				yc := py + (cx-px)*dy/dx
-				for l := int(math.Floor((yc-hw)/2)) - 1; l <= int(math.Floor((yc+hw)/2))+1; l++ {
-					add(cx, float64(l)*2+0.5)
-					add(cx, float64(l)*2+1.5)
-				}
-			}
-		}
-	} else {
-		lo, hi := py, qy
-		if hi < lo {
-			lo, hi = hi, lo
-		}
-		hw := half * segLen / math.Abs(dy)
-		for l := int(math.Floor(lo/2)) - 2; l <= int(math.Floor(hi/2))+2; l++ {
-			for _, roff := range [2]float64{0.5, 1.5} {
-				cy := float64(l)*2 + roff
-				xc := px + (cy-py)*dx/dy
-				for x := int(math.Floor(xc-hw)) - 1; x <= int(math.Floor(xc+hw))+1; x++ {
-					add(float64(x)+0.25, cy)
-					add(float64(x)+0.75, cy)
-				}
+
+	// Walk the centerline at fine intervals. At each step, determine which
+	// cell the point is in and compute which of its 8 braille dots fall
+	// within the sweep band. The DDA walk ensures every cell the line
+	// passes through is visited (no staircase gaps), and the per-dot
+	// distance check gives exact sub-cell coverage without perpendicular
+	// offset leakage into adjacent cells.
+	numSteps := int(segLen*8) + 1
+	if numSteps < 16 {
+		numSteps = 16
+	}
+	step := 1.0 / float64(numSteps)
+
+	for i := 0; i < numSteps; i++ {
+		s := float64(i) * step
+		cx := px + dx*s
+		cy := py + dy*s
+		cellX := int(math.Floor(cx))
+		cellY := int(math.Floor(cy / 2))
+		fillCell(cellX, cellY, s)
+		// On diagonals the centerline may clip a cell corner without
+		// landing inside it, leaving a connectivity gap. Check the
+		// perpendicular neighbor only when the line is diagonal enough
+		// that the centerline truly passes through adjacent cells.
+		// Neighbors use cellS=-1 (auto-computed from projection).
+		if segLen > 2 && math.Abs(dx) > 0.1 && math.Abs(dy) > 0.1 {
+			ratio := math.Abs(dx) / math.Abs(dy)
+			if ratio > 3 {
+				// Mostly horizontal: check above and below.
+				fillCell(cellX, cellY-1, -1)
+				fillCell(cellX, cellY+1, -1)
+			} else if ratio < 0.33 {
+				// Mostly vertical: check left and right.
+				fillCell(cellX-1, cellY, -1)
+				fillCell(cellX+1, cellY, -1)
+			} else {
+				// Diagonal: check all 4 orthogonal neighbors.
+				fillCell(cellX-1, cellY, -1)
+				fillCell(cellX+1, cellY, -1)
+				fillCell(cellX, cellY-1, -1)
+				fillCell(cellX, cellY+1, -1)
 			}
 		}
 	}
 
+	// Compute opacity per cell based on stagger timing.
 	keys := make([][2]int, 0, len(cells))
 	for k := range cells {
 		keys = append(keys, k)
@@ -459,7 +517,34 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 	out := make([]Ghost, 0, len(keys))
 	for _, k := range keys {
 		a := cells[k]
-		out = append(out, Ghost{X: k[0], Line: k[1], Opacity: a.op, Mask: a.mask})
+		cellX, cellY := k[0], k[1]
+		s := a.minS
+		age := now.Sub(e.t)
+		if e.stagger {
+			u := s
+			age = now.Sub(e.t.Add(time.Duration(float64(t.sweepWindow()) * t.cfg.Easing.easeInverse(u))))
+		}
+		if age < 0 {
+			continue
+		}
+		op := 1.0 - t.cfg.Easing.apply(float64(age)/float64(dur))
+		if op <= 0 {
+			continue
+		}
+		// Edge fade: cells whose closest dot is far from the centerline
+		// get their opacity reduced. This creates a soft gradient at the
+		// band edges instead of a hard on/off boundary, making diagonal
+		// trails look much smoother. Cells on the centerline (minDist≈0)
+		// keep full opacity; only cells past the inner half of the band
+		// start fading.
+		edgeFade := 1.0
+		if a.minDist > half*0.5 {
+			edgeFade = 1.0 - 0.6*((a.minDist-half*0.5)/(half*0.5))
+			if edgeFade < 0.3 {
+				edgeFade = 0.3
+			}
+		}
+		out = append(out, Ghost{X: cellX, Line: cellY, Opacity: op * edgeFade, BrailleMask: a.braille, MinDist: a.minDist})
 	}
 	return out
 }

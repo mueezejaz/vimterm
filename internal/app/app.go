@@ -852,8 +852,9 @@ func (a *App) updateTrail(frame *render.Frame, rows int, now time.Time) {
 // other cell change. Each ghost is resolved from its absolute buffer line to
 // a viewport row; the cell under the live cursor (skipX, skipLine) is skipped
 // because the cursor block or host cursor already marks it. Sweep ghosts
-// carrying a sub-cell mask render as Unicode block glyphs, so band edges
-// move at quarter-cell resolution instead of snapping to whole cells.
+// carrying a braille mask render as Unicode braille glyphs (2×4 sub-cell
+// resolution), while those with a quarter-cell mask render as Unicode block
+// glyphs. Both reduce staircase artifacts on diagonal trails.
 func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, skipX, skipLine int) {
 	ghosts := a.trail.Ghosts(now)
 	if len(ghosts) == 0 {
@@ -879,10 +880,28 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			continue
 		}
 		if !a.haveTheme {
-			if g.Mask != 0 {
+			if g.BrailleMask != 0 {
+				cell.Content = trailBrailleGlyph(g.BrailleMask)
+			} else if g.Mask != 0 {
 				cell.Content = trailBlockGlyph(g.Mask)
 			}
 			cell.Reverse = true
+			continue
+		}
+		if g.BrailleMask != 0 {
+			// Braille dot pattern: dots take the ghost foreground,
+			// the cell background stays intact. Braille provides
+			// 2×4 sub-cell resolution for smooth diagonal trails.
+			if cell.Width != 1 {
+				continue
+			}
+			fg := lerpColor(a.themeBg, a.themeFg, op)
+			*cell = emulator.Cell{
+				Content: trailBrailleGlyph(g.BrailleMask),
+				Width:   1,
+				Fg:      fg,
+				Bg:      cell.Bg,
+			}
 			continue
 		}
 		if g.Mask != 0 {

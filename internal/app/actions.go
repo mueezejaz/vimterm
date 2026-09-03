@@ -559,6 +559,14 @@ func trailBlockGlyph(mask uint8) string {
 	}
 }
 
+// trailBrailleGlyph maps a braille dot mask (0x00–0xFF) to a Unicode braille
+// character (U+2800 + mask). Braille provides 2×4 sub-cell dots per cell —
+// twice the vertical resolution of quarter-blocks — so diagonal trails
+// render with far less staircase artifact.
+func trailBrailleGlyph(mask uint8) string {
+	return string(rune(0x2800 + rune(mask)))
+}
+
 // lerpColor mixes two colors: t=0 returns a, t=1 returns b.
 func lerpColor(a, b emulator.Color, t float64) emulator.Color {
 	mix := func(x, y uint8) uint8 {
