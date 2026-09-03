@@ -3,6 +3,7 @@ package cursortrail
 
 import (
 	"math"
+	"sort"
 	"sync"
 	"time"
 )
@@ -75,12 +76,16 @@ func (e Easing) easeInverse(u float64) float64 {
 	}
 }
 
-// Ghost is one position in the trail with its rendering opacity. Line is an
+// Ghost is one cell of the trail with its rendering opacity. Line is an
 // absolute buffer line (scrollback + screen), resolved to a viewport row by
 // the caller at draw time so ghosts stay glued to their line while scrolling.
+// Mask narrows the ghost to quarters of the cell so sweep edges render
+// smoothly: bit0 upper-left, bit1 upper-right, bit2 lower-left, bit3
+// lower-right; 0 paints the whole cell.
 type Ghost struct {
 	X, Line int
 	Opacity float64 // 1.0 = full, 0.0 = invisible
+	Mask    uint8
 }
 
 // Config holds trail parameters.
@@ -131,7 +136,12 @@ type Trail struct {
 type entry struct {
 	x, line int
 	t       time.Time
-	w       float64 // opacity weight from anti-aliased path sampling
+	// sweep entries describe a whole jump: the band between (x, line) and
+	// (x1, line1) is expanded into per-cell ghosts at read time. Plain
+	// entries are single departed positions.
+	sweep     bool
+	stagger   bool
+	x1, line1 int
 }
 
 // New creates a trail with the given config.
@@ -194,10 +204,10 @@ func (t *Trail) Duration() time.Duration {
 // once per render frame with the position of whichever cursor is live (the
 // virtual cursor in normal/visual mode, the shell cursor in insert mode).
 // A position becomes a ghost when the cursor leaves it — the fade starts at
-// departure — so a move made after sitting still still animates. The path
-// between the old and new positions is also filled one ghost per cell: a
-// rested jump sweeps it with staggered births (the comet), fast motion fills
-// skipped cells immediately so the trail has no holes.
+// departure — so a move made after sitting still still animates. A jump of
+// two or more cells also records a sweep: the straight band between the two
+// positions is expanded into per-cell ghosts at sub-cell resolution, so
+// diagonal leaps read as one smooth motion instead of a staircase.
 func (t *Trail) Record(x, line int, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -210,11 +220,21 @@ func (t *Trail) Record(x, line int, now time.Time) {
 	if t.hasPos {
 		// The cursor just departed (lastX, lastLine): that position turns
 		// into a ghost whose fade starts now.
-		t.append(t.lastX, t.lastLine, now, 1)
-		if now.Sub(t.lastT) >= trailSweepMinDwell {
-			t.sweep(t.lastX, t.lastLine, x, line, now, true)
-		} else {
-			t.sweep(t.lastX, t.lastLine, x, line, now, false)
+		t.append(t.lastX, t.lastLine, now)
+		dx, dl := x-t.lastX, line-t.lastLine
+		if dx < 0 {
+			dx = -dx
+		}
+		if dl < 0 {
+			dl = -dl
+		}
+		d := dx
+		if dl > dx {
+			d = dl
+		}
+		if d >= 2 {
+			t.appendSweep(t.lastX, t.lastLine, x, line, now,
+				now.Sub(t.lastT) >= trailSweepMinDwell)
 		}
 	}
 	t.lastX, t.lastLine = x, line
@@ -222,19 +242,47 @@ func (t *Trail) Record(x, line int, now time.Time) {
 	t.hasPos = true
 }
 
-// append adds an entry. A full buffer never evicts a live ghost: the oldest
-// entry is dropped when it has already expired by this entry's birth time,
-// otherwise the buffer grows.
-func (t *Trail) append(x, line int, at time.Time, w float64) {
+// sweepWindow is how long a staggered sweep keeps spawning sub-cell ghosts
+// after the jump: the comet's head chases the cursor over this window.
+func (t *Trail) sweepWindow() time.Duration {
+	return t.cfg.Duration * 2 / 5
+}
+
+// lifetime is how long an entry can still contribute ghosts. Staggered
+// sweeps outlive a plain departed position by the sweep window.
+func (t *Trail) lifetime(e entry) time.Duration {
+	l := t.cfg.Duration
+	if e.sweep && e.stagger {
+		l += t.sweepWindow()
+	}
+	return l
+}
+
+// reserve makes room for one more entry. A full buffer never evicts a live
+// ghost: the oldest entry is dropped when it has already expired by this
+// entry's birth time, otherwise the buffer grows.
+func (t *Trail) reserve(at time.Time) {
 	if t.count == len(t.buf) {
 		front := (t.head - t.count + len(t.buf)) % len(t.buf)
-		if at.Sub(t.buf[front].t) > t.cfg.Duration {
+		if at.Sub(t.buf[front].t) > t.lifetime(t.buf[front]) {
 			t.count--
 		} else if len(t.buf) < trailMaxEntries {
 			t.grow(len(t.buf) * 2)
 		}
 	}
-	t.buf[t.head] = entry{x: x, line: line, t: at, w: w}
+}
+
+func (t *Trail) append(x, line int, at time.Time) {
+	t.reserve(at)
+	t.buf[t.head] = entry{x: x, line: line, t: at}
+	t.head = (t.head + 1) % len(t.buf)
+	t.count++
+}
+
+func (t *Trail) appendSweep(x0, line0, x1, line1 int, at time.Time, stagger bool) {
+	t.reserve(at)
+	t.buf[t.head] = entry{x: x0, line: line0, x1: x1, line1: line1, t: at,
+		sweep: true, stagger: stagger}
 	t.head = (t.head + 1) % len(t.buf)
 	t.count++
 }
@@ -255,79 +303,11 @@ func (t *Trail) grow(newCap int) {
 	t.head = t.count % newCap
 }
 
-// sweep spawns interpolated ghosts along the straight path from
-// (x0, line0) to (x1, line1). The line is rasterized one full-strength cell
-// per step of its dominant axis (Bresenham), and whenever both axes step at
-// once a half-weight cell bridges the corner, so diagonals read as a thin,
-// connected, straight line instead of a staircase of fat runs or a mush of
-// half-cells. With stagger set, sample k is born when the eased motion
-// reaches its position; without it every sample is born immediately (the
-// cursor passed through within the last frame). The endpoints themselves are
-// excluded: the origin already became a ghost and the destination is the
-// live cursor.
-func (t *Trail) sweep(x0, line0, x1, line1 int, now time.Time, stagger bool) {
-	dur := t.cfg.Duration
-	if dur <= 0 {
-		return
-	}
-	dx, dl := x1-x0, line1-line0
-	adx, adl := dx, dl
-	if adx < 0 {
-		adx = -adx
-	}
-	if adl < 0 {
-		adl = -adl
-	}
-	d, horizontal := adx, true
-	if adl > adx {
-		d, horizontal = adl, false
-	}
-	if d < 2 {
-		return
-	}
-	window := dur * 2 / 5
-	emit := func(x, line int, w float64, u float64) {
-		if w <= 0 {
-			return
-		}
-		at := now
-		if stagger {
-			at = now.Add(time.Duration(float64(window) * t.cfg.Easing.easeInverse(u)))
-		}
-		t.append(x, line, at, w)
-	}
-	// bridge connects a corner step (both axes moving) with a half-weight
-	// cell so consecutive samples always share an edge.
-	bridge := func(prevX, prevIr, nextX, nextIr int, u float64) {
-		if prevX == nextX || prevIr == nextIr {
-			return
-		}
-		if horizontal {
-			emit(prevX, nextIr, 0.5, u)
-		} else {
-			emit(nextX, prevIr, 0.5, u)
-		}
-	}
-
-	prevX, prevIr := x0, line0
-	for k := 1; k < d; k++ {
-		u := float64(k) / float64(d)
-		fx := float64(x0) + float64(dx)*u
-		fl := float64(line0) + float64(dl)*u
-		ix, ir := int(math.Round(fx)), int(math.Round(fl))
-		bridge(prevX, prevIr, ix, ir, u)
-		emit(ix, ir, 1, u)
-		prevX, prevIr = ix, ir
-	}
-	// Connect the last cell to the live cursor's cell the same way.
-	bridge(prevX, prevIr, x1, line1, float64(d-1)/float64(d))
-}
-
-// Ghosts returns the trail positions to draw, oldest first. Each ghost has an
-// opacity from 0 (invisible) to 1 (full), decaying along the configured
-// easing curve. Entries that have expired, and sweep entries that are not
-// born yet (stamped in the future), are excluded. Oldest-first ordering lets
-// the caller overwrite a shared cell with the newer (more opaque) ghost.
+// Ghosts returns the trail positions to draw, oldest first. Plain entries
+// expand to a single full-cell ghost; sweep entries rasterize their band
+// into per-cell ghosts with sub-cell masks. Each ghost's opacity runs from 1
+// (just born) to 0 (expired) along the configured easing curve. Oldest-first
+// ordering lets the caller overwrite a shared cell with a newer ghost.
 func (t *Trail) Ghosts(now time.Time) []Ghost {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -344,10 +324,14 @@ func (t *Trail) Ghosts(now time.Time) []Ghost {
 		idx := (t.head - 1 - i + len(t.buf)) % len(t.buf)
 		e := t.buf[idx]
 		age := now.Sub(e.t)
-		if age < 0 || age > dur {
+		if age < 0 || age > t.lifetime(e) {
 			continue
 		}
-		op := (1.0 - t.cfg.Easing.apply(float64(age)/float64(dur))) * e.w
+		if e.sweep {
+			result = append(result, t.sweepGhosts(e, now)...)
+			continue
+		}
+		op := 1.0 - t.cfg.Easing.apply(float64(age)/float64(dur))
 		if op <= 0 {
 			continue
 		}
@@ -356,7 +340,131 @@ func (t *Trail) Ghosts(now time.Time) []Ghost {
 	return result
 }
 
-// Active reports whether any ghost is alive or still pending (sweep entries
+// sweepGhosts rasterizes a jump's swept band into per-cell ghosts at
+// quarter-cell resolution. The band is the straight segment between the two
+// cursor-cell centers, widened perpendicular to the motion by the cursor's
+// own extent, with rows counted double so the geometry matches the on-screen
+// cell aspect: horizontal motion smears a row tall, vertical motion a column
+// wide, diagonals in between. Every covered quarter joins its cell's mask,
+// and its fade starts when the eased motion reaches it — the band's head
+// chases the cursor while the tail fades at the origin. The departed origin
+// cell is skipped: the plain departure ghost owns that cell.
+func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
+	dur := t.cfg.Duration
+	// Cursor centers, rows doubled so one row = two column units.
+	px, py := float64(e.x)+0.5, float64(e.line)*2+1
+	qx, qy := float64(e.x1)+0.5, float64(e.line1)*2+1
+	dx, dy := qx-px, qy-py
+	segLen := math.Hypot(dx, dy)
+	if segLen < 1 {
+		return nil
+	}
+	// Half-thickness: the cursor rectangle (half a column by one row, i.e.
+	// half-extents 0.5 x 1.0) projected onto the band's normal.
+	nx, ny := -dy/segLen, dx/segLen
+	half := 0.5*math.Abs(nx) + math.Abs(ny)
+
+	type acc struct {
+		mask uint8
+		op   float64
+	}
+	cells := map[[2]int]*acc{}
+	add := func(cx, cy float64) {
+		if cx < 0 || cy < 0 {
+			return
+		}
+		s := ((cx-px)*dx + (cy-py)*dy) / segLen
+		if s < 0 || s > segLen {
+			return
+		}
+		if perp := math.Abs((cx-px)*dy-(cy-py)*dx) / segLen; perp > half {
+			return
+		}
+		cellX, cellY := int(cx), int(cy/2)
+		if cellX == e.x && cellY == e.line {
+			return
+		}
+		colBit := int(cx*2) % 2
+		rowBit := int(cy) % 2
+		bit := uint8(1) << (rowBit*2 + colBit)
+		age := now.Sub(e.t)
+		if e.stagger {
+			u := s / segLen
+			age = now.Sub(e.t.Add(time.Duration(float64(t.sweepWindow()) * t.cfg.Easing.easeInverse(u))))
+		}
+		if age < 0 {
+			return
+		}
+		op := 1.0 - t.cfg.Easing.apply(float64(age)/float64(dur))
+		if op <= 0 {
+			return
+		}
+		key := [2]int{cellX, cellY}
+		a := cells[key]
+		if a == nil {
+			a = &acc{}
+			cells[key] = a
+		}
+		a.mask |= bit
+		if op > a.op {
+			a.op = op
+		}
+	}
+	// Walk along the dominant axis so the per-step slice stays narrow, and
+	// bracket the walk with min/max — the jump may point either way.
+	if math.Abs(dx) >= math.Abs(dy) {
+		lo, hi := px, qx
+		if hi < lo {
+			lo, hi = hi, lo
+		}
+		hw := half * segLen / math.Abs(dx)
+		for x := int(math.Floor(lo)) - 2; x <= int(math.Floor(hi))+2; x++ {
+			for _, off := range [2]float64{0.25, 0.75} {
+				cx := float64(x) + off
+				yc := py + (cx-px)*dy/dx
+				for l := int(math.Floor((yc-hw)/2)) - 1; l <= int(math.Floor((yc+hw)/2))+1; l++ {
+					add(cx, float64(l)*2+0.5)
+					add(cx, float64(l)*2+1.5)
+				}
+			}
+		}
+	} else {
+		lo, hi := py, qy
+		if hi < lo {
+			lo, hi = hi, lo
+		}
+		hw := half * segLen / math.Abs(dy)
+		for l := int(math.Floor(lo/2)) - 2; l <= int(math.Floor(hi/2))+2; l++ {
+			for _, roff := range [2]float64{0.5, 1.5} {
+				cy := float64(l)*2 + roff
+				xc := px + (cy-py)*dx/dy
+				for x := int(math.Floor(xc-hw)) - 1; x <= int(math.Floor(xc+hw))+1; x++ {
+					add(float64(x)+0.25, cy)
+					add(float64(x)+0.75, cy)
+				}
+			}
+		}
+	}
+
+	keys := make([][2]int, 0, len(cells))
+	for k := range cells {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i][1] != keys[j][1] {
+			return keys[i][1] < keys[j][1]
+		}
+		return keys[i][0] < keys[j][0]
+	})
+	out := make([]Ghost, 0, len(keys))
+	for _, k := range keys {
+		a := cells[k]
+		out = append(out, Ghost{X: k[0], Line: k[1], Opacity: a.op, Mask: a.mask})
+	}
+	return out
+}
+
+// Active reports whether any ghost is alive or still pending (sweep sub-cells
 // stamped in the future count too). The main loop uses it to keep rendering
 // frames while the trail animates and stop once it has expired.
 func (t *Trail) Active(now time.Time) bool {
@@ -371,7 +479,7 @@ func (t *Trail) Active(now time.Time) bool {
 	}
 	for i := 0; i < t.count; i++ {
 		idx := (t.head - 1 - i + len(t.buf)) % len(t.buf)
-		if now.Sub(t.buf[idx].t) <= dur {
+		if now.Sub(t.buf[idx].t) <= t.lifetime(t.buf[idx]) {
 			return true
 		}
 	}

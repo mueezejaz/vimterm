@@ -851,7 +851,9 @@ func (a *App) updateTrail(frame *render.Frame, rows int, now time.Time) {
 // frame cells so the diff renderer paints and later clears them like any
 // other cell change. Each ghost is resolved from its absolute buffer line to
 // a viewport row; the cell under the live cursor (skipX, skipLine) is skipped
-// because the cursor block or host cursor already marks it.
+// because the cursor block or host cursor already marks it. Sweep ghosts
+// carrying a sub-cell mask render as Unicode block glyphs, so band edges
+// move at quarter-cell resolution instead of snapping to whole cells.
 func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, skipX, skipLine int) {
 	ghosts := a.trail.Ghosts(now)
 	if len(ghosts) == 0 {
@@ -877,7 +879,28 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			continue
 		}
 		if !a.haveTheme {
+			if g.Mask != 0 {
+				cell.Content = trailBlockGlyph(g.Mask)
+			}
 			cell.Reverse = true
+			continue
+		}
+		if g.Mask != 0 {
+			// Sub-cell block: covered quarters take the ghost fill (the
+			// color reverse video would paint at full strength), the rest
+			// keeps the cell's own background. Wide characters are left
+			// alone — splitting a glyph across a block edge would corrupt
+			// its cell pairing.
+			if cell.Width != 1 {
+				continue
+			}
+			fg, bg := resolvedGhostColors(*cell, a.themeFg, a.themeBg)
+			*cell = emulator.Cell{
+				Content: trailBlockGlyph(g.Mask),
+				Width:   1,
+				Fg:      lerpColor(bg, fg, op),
+				Bg:      bg,
+			}
 			continue
 		}
 		cell.Fg, cell.Bg = trailGhostStyle(*cell, op, a.themeFg, a.themeBg)
