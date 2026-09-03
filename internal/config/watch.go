@@ -22,22 +22,22 @@ func Watch(path string, interval time.Duration, cb func(*Config, error)) func() 
 			case <-stop:
 				return
 			case <-ticker.C:
-			mod, size := statFile(path)
-			if mod.Equal(lastMod) && size == lastSize {
-				continue
-			}
-			cfg, err := Load(path)
-			newMod, newSize := statFile(path)
-			// If the file was observed at zero bytes (e.g. in-place save
-			// that truncates before rewriting), skip this cycle and don't
-			// commit the stat so the next tick catches the completed write.
-			if size == 0 || newSize == 0 {
-				continue
-			}
-			if newMod.Equal(mod) && newSize == size {
-				cb(cfg, err)
-			}
-			lastMod, lastSize = newMod, newSize
+				mod, size := statFile(path)
+				if mod.Equal(lastMod) && size == lastSize {
+					continue
+				}
+				cfg, err := Load(path)
+				newMod, newSize := statFile(path)
+				// If the file was observed at zero bytes (e.g. in-place save
+				// that truncates before rewriting), skip this cycle and don't
+				// commit the stat so the next tick catches the completed write.
+				if size == 0 || newSize == 0 {
+					continue
+				}
+				if newMod.Equal(mod) && newSize == size {
+					cb(cfg, err)
+				}
+				lastMod, lastSize = newMod, newSize
 			}
 		}
 	}()

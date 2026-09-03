@@ -47,6 +47,49 @@ func TestLoadInvalidStatusMerge(t *testing.T) {
 	}
 }
 
+func TestLoadCursorTrailEasing(t *testing.T) {
+	for _, want := range []string{"linear", "ease_in", "ease_out", "ease_in_out"} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		if err := os.WriteFile(path, []byte("[cursor_trail]\nenabled = true\neasing = \""+want+"\"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("easing = %q: %v", want, err)
+		}
+		if cfg.CursorTrail.Easing == nil || *cfg.CursorTrail.Easing != want {
+			t.Errorf("easing = %v, want %q", cfg.CursorTrail.Easing, want)
+		}
+	}
+}
+
+func TestLoadCursorTrailEasingDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[cursor_trail]\nenabled = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CursorTrail.Easing == nil || *cfg.CursorTrail.Easing != "linear" {
+		t.Errorf("default easing = %v, want linear", cfg.CursorTrail.Easing)
+	}
+}
+
+func TestLoadInvalidCursorTrailEasing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[cursor_trail]\neasing = \"bounce\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error for invalid cursor_trail easing")
+	}
+}
+
 func TestLoadMissingKeysFallBackToDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")

@@ -1,0 +1,322 @@
+package app
+
+import (
+	"testing"
+	"time"
+
+	"vimterm/internal/emulator"
+	"vimterm/internal/mode"
+	"vimterm/internal/render"
+	"vimterm/internal/selection"
+)
+
+// Fixed base time so ghost ages (and therefore opacities) are deterministic.
+var trailNow = time.Unix(1700000000, 0)
+
+// trailApp builds a 20x10 app whose 12 content lines leave 3 lines of
+// scrollback: the 9 emulator rows show absolute buffer lines 3..11.
+func trailApp(t *testing.T) *App {
+	t.Helper()
+	content := "line zero\r\nline one\r\nline two\r\nline three\r\nline four\r\n" +
+		"line five\r\nline six\r\nline seven\r\nline eight\r\nline nine\r\n" +
+		"line ten\r\nline eleven"
+	a := realApp(t, 20, 10, content)
+	a.curValid = true
+	a.cur = selection.Pos{Line: 11, Col: 0}
+	return a
+}
+
+// fillFrame mirrors renderFrame's viewport mapping: frame row y shows
+// absolute buffer line sbLen-offset+y.
+func fillFrame(a *App, frame *render.Frame, rows, offset int) {
+	sbLen := a.emu.ScrollbackLen()
+	for y := 0; y < rows; y++ {
+		absLine := sbLen - offset + y
+		for x := 0; x < frame.Cols; x++ {
+			if absLine < sbLen {
+				frame.Cells[y][x] = a.emu.ScrollbackCell(x, absLine)
+			} else {
+				frame.Cells[y][x] = a.emu.Cell(x, absLine-sbLen)
+			}
+		}
+	}
+}
+
+func TestLerpColor(t *testing.T) {
+	black := emulator.Color{R: 0, G: 0, B: 0}
+	white := emulator.Color{R: 255, G: 255, B: 255}
+	cases := []struct {
+		name string
+		a, b emulator.Color
+		t    float64
+		want emulator.Color
+	}{
+		{"t=0 returns a", black, white, 0, black},
+		{"t=1 returns b", black, white, 1, white},
+		{"midpoint", black, white, 0.5, emulator.Color{R: 128, G: 128, B: 128}},
+		{"quarter", white, black, 0.25, emulator.Color{R: 191, G: 191, B: 191}},
+	}
+	for _, tc := range cases {
+		if got := lerpColor(tc.a, tc.b, tc.t); got != tc.want {
+			t.Errorf("%s: lerpColor = %+v, want %+v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestTrailGhostStyle(t *testing.T) {
+	white := emulator.Color{R: 255, G: 255, B: 255}
+	black := emulator.Color{R: 0, G: 0, B: 0}
+	red := emulator.Color{R: 255, G: 0, B: 0}
+	blue := emulator.Color{R: 0, G: 0, B: 255}
+
+	cases := []struct {
+		name             string
+		cell             emulator.Cell
+		strength         float64
+		themeFg, themeBg emulator.Color
+		wantFg, wantBg   emulator.Color
+	}{
+		{
+			name:     "strength 1 is exact reverse video",
+			cell:     emulator.Cell{Fg: white, Bg: black},
+			strength: 1,
+			wantFg:   black, wantBg: white,
+		},
+		{
+			name:     "strength 0 leaves colors untouched",
+			cell:     emulator.Cell{Fg: red, Bg: blue},
+			strength: 0,
+			wantFg:   red, wantBg: blue,
+		},
+		{
+			name:     "reverse cell resolves before blending",
+			cell:     emulator.Cell{Fg: red, Bg: blue, Reverse: true},
+			strength: 0,
+			wantFg:   blue, wantBg: red,
+		},
+		{
+			name:     "default colors resolve to theme",
+			cell:     emulator.Cell{Fg: emulator.Color{Default: true}, Bg: emulator.Color{Default: true}},
+			strength: 1,
+			themeFg:  white, themeBg: black,
+			wantFg: black, wantBg: white,
+		},
+		{
+			name:     "strength clamps above 1",
+			cell:     emulator.Cell{Fg: red, Bg: blue},
+			strength: 1.5,
+			wantFg:   blue, wantBg: red,
+		},
+	}
+	for _, tc := range cases {
+		fg, bg := trailGhostStyle(tc.cell, tc.strength, tc.themeFg, tc.themeBg)
+		if fg != tc.wantFg || bg != tc.wantBg {
+			t.Errorf("%s: trailGhostStyle = fg %+v bg %+v, want fg %+v bg %+v",
+				tc.name, fg, bg, tc.wantFg, tc.wantBg)
+		}
+	}
+}
+
+// TestPaintTrailGhostsFallback covers the no-theme path (plain reverse video)
+// plus live-cursor skip, out-of-range ghosts, and expiry.
+func TestPaintTrailGhostsFallback(t *testing.T) {
+	a := trailApp(t)
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	rows := a.emu.Height() // 9 content rows; row 9 is the status line
+
+	// The cursor travels (0,5) → (0,50) → (0,11): ghosts are born at (0,5)
+	// and (0,50) when the cursor departs them; (0,11) is the live cursor.
+	a.trail.Record(0, 5, trailNow.Add(-150*time.Millisecond))
+	a.trail.Record(0, 50, trailNow.Add(-100*time.Millisecond))
+	a.trail.Record(0, 11, trailNow.Add(-50*time.Millisecond))
+
+	fillFrame(a, frame, rows, 0)
+	a.paintTrailGhosts(frame, rows, trailNow, 0, 11)
+
+	if !frame.Cells[2][0].Reverse {
+		t.Fatal("ghost cell at viewport row 2 should be painted with reverse video")
+	}
+	if frame.Cells[8][0].Reverse {
+		t.Fatal("ghost at the live cursor position should be skipped")
+	}
+	if frame.Cells[0][0].Reverse {
+		t.Fatal("ghost on a buffer line above the viewport should not paint row 0")
+	}
+
+	// After the trail expires nothing is painted.
+	expired := render.NewFrame(a.screenCols, a.screenRows)
+	fillFrame(a, expired, rows, 0)
+	a.paintTrailGhosts(expired, rows, trailNow.Add(time.Second), 0, 11)
+	for y := 0; y < rows; y++ {
+		for x := 0; x < expired.Cols; x++ {
+			if expired.Cells[y][x].Reverse {
+				t.Fatalf("expired ghost left reverse video at row %d col %d", y, x)
+			}
+		}
+	}
+}
+
+// TestPaintTrailGhostsBlend covers the theme path: the ghost colors are a
+// strength-weighted mix of the cell's rendered colors.
+func TestPaintTrailGhostsBlend(t *testing.T) {
+	a := trailApp(t)
+	a.haveTheme = true
+	a.themeFg = emulator.Color{R: 255, G: 255, B: 255}
+	a.themeBg = emulator.Color{R: 0, G: 0, B: 0}
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	rows := a.emu.Height()
+
+	// The ghost at line 5 departed 50ms ago (below the 64ms sweep dwell, so
+	// no interpolated streak): opacity 1-50/300 times the default max
+	// opacity 0.6 gives blend strength 0.5.
+	a.trail.Record(0, 5, trailNow.Add(-100*time.Millisecond))
+	a.trail.Record(0, 11, trailNow.Add(-50*time.Millisecond))
+
+	fillFrame(a, frame, rows, 0)
+	a.paintTrailGhosts(frame, rows, trailNow, 0, 11)
+
+	cell := frame.Cells[2][0]
+	wantFg := emulator.Color{R: 128, G: 128, B: 128}
+	wantBg := emulator.Color{R: 128, G: 128, B: 128}
+	if cell.Reverse {
+		t.Error("blended ghost cell should not use the reverse attribute")
+	}
+	if cell.Fg != wantFg || cell.Bg != wantBg {
+		t.Errorf("ghost cell = fg %+v bg %+v, want fg %+v bg %+v", cell.Fg, cell.Bg, wantFg, wantBg)
+	}
+}
+
+// TestPaintTrailGhostsScroll verifies ghosts are painted at the viewport row
+// of their absolute buffer line, so scrolling moves the ghost with its text.
+func TestPaintTrailGhostsScroll(t *testing.T) {
+	a := trailApp(t)
+	rows := a.emu.Height()
+
+	a.trail.Record(0, 5, trailNow.Add(-100*time.Millisecond))
+	a.trail.Record(0, 11, trailNow.Add(-50*time.Millisecond))
+
+	// Unscrolled: line 5 sits at viewport row 5-3 = 2.
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	fillFrame(a, frame, rows, 0)
+	a.paintTrailGhosts(frame, rows, trailNow, 0, 11)
+	if !frame.Cells[2][0].Reverse {
+		t.Fatal("ghost should be at viewport row 2 before scrolling")
+	}
+
+	// Scroll up two lines: line 5 moves to viewport row 4.
+	a.vp.SetOffset(2)
+	scrolled := render.NewFrame(a.screenCols, a.screenRows)
+	fillFrame(a, scrolled, rows, 2)
+	a.paintTrailGhosts(scrolled, rows, trailNow, 0, 11)
+	if !scrolled.Cells[4][0].Reverse {
+		t.Fatal("ghost should follow its buffer line to viewport row 4 after scrolling")
+	}
+	if scrolled.Cells[2][0].Reverse {
+		t.Fatal("ghost should not stay at the pre-scroll row")
+	}
+}
+
+// TestPaintTrailGhostsWideChar verifies ghosts skip wide-character
+// continuation cells (the lead cell carries the glyph).
+func TestPaintTrailGhostsWideChar(t *testing.T) {
+	a := realApp(t, 20, 10, "日本語テスト\r\nsecond line")
+	a.curValid = true
+	a.cur = selection.Pos{Line: 1, Col: 0}
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	rows := a.emu.Height()
+
+	a.trail.Record(1, 0, trailNow.Add(-150*time.Millisecond)) // continuation half
+	a.trail.Record(0, 0, trailNow.Add(-100*time.Millisecond)) // lead cell
+	a.trail.Record(0, 1, trailNow.Add(-50*time.Millisecond))  // live cursor
+
+	fillFrame(a, frame, rows, 0)
+	a.paintTrailGhosts(frame, rows, trailNow, 0, 1)
+
+	if !frame.Cells[0][0].Reverse {
+		t.Fatal("ghost on the wide-char lead cell should be painted")
+	}
+	if frame.Cells[0][1].Reverse {
+		t.Fatal("ghost on the wide-char continuation cell should be skipped")
+	}
+}
+
+// TestPaintTrailGhostsJumpSweep verifies a long jump from a rested position
+// paints a gapless streak that grows toward the cursor over the sweep window.
+func TestPaintTrailGhostsJumpSweep(t *testing.T) {
+	a := trailApp(t)
+	rows := a.emu.Height()
+
+	// Rest at line 5, then jump three lines down to the live cursor at
+	// line 8. d=3 → sweep points at lines 6 and 7, born 40ms apart
+	// (dt = 300*2/(5*3)); viewport rows are line-3.
+	a.trail.Record(0, 5, trailNow.Add(-time.Second))
+	a.trail.Record(0, 8, trailNow)
+
+	// Right after the jump only the departed origin (row 2) shows.
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	fillFrame(a, frame, rows, 0)
+	a.paintTrailGhosts(frame, rows, trailNow, 0, 8)
+	if !frame.Cells[2][0].Reverse {
+		t.Fatal("departed origin should be painted right after the jump")
+	}
+	if frame.Cells[3][0].Reverse || frame.Cells[4][0].Reverse {
+		t.Fatal("sweep points should not be painted before their birth times")
+	}
+
+	// At +40ms the first point (line 6 → row 3) joins the streak.
+	mid := render.NewFrame(a.screenCols, a.screenRows)
+	fillFrame(a, mid, rows, 0)
+	a.paintTrailGhosts(mid, rows, trailNow.Add(40*time.Millisecond), 0, 8)
+	if !mid.Cells[2][0].Reverse || !mid.Cells[3][0].Reverse {
+		t.Fatal("origin and first sweep point should be painted at +40ms")
+	}
+	if mid.Cells[4][0].Reverse {
+		t.Fatal("second sweep point should not be painted before +80ms")
+	}
+
+	// At +80ms the streak reaches the cursor: rows 2, 3, 4 all painted.
+	end := render.NewFrame(a.screenCols, a.screenRows)
+	fillFrame(a, end, rows, 0)
+	a.paintTrailGhosts(end, rows, trailNow.Add(80*time.Millisecond), 0, 8)
+	for _, y := range []int{2, 3, 4} {
+		if !end.Cells[y][0].Reverse {
+			t.Fatalf("streak should be painted at row %d at +80ms (gapless)", y)
+		}
+	}
+}
+
+// TestUpdateTrailAltScreen verifies the trail works on the alternate screen
+// buffer (nvim, opencode, less): the shell cursor drives it there too.
+func TestUpdateTrailAltScreen(t *testing.T) {
+	a := realApp(t, 20, 10, "main screen")
+	rows := a.emu.Height()
+
+	// Enter the alternate screen and park the shell cursor after "nvim fake"
+	// on the top row, like a full-screen app's cursor.
+	if _, err := a.emu.Write([]byte("\x1b[?1049h\x1b[2Jnvim fake")); err != nil {
+		t.Fatal(err)
+	}
+	a.altScreen = true // renderFrame mirrors emu.IsAltScreen() on its tick
+	a.mods.Enter(mode.ModeInsert)
+	a.curValid = false
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	fillFrame(a, frame, rows, 0)
+
+	a.updateTrail(frame, rows, trailNow) // seeds the position
+
+	// Move the cursor like an editor jump and render the next frame.
+	if _, err := a.emu.Write([]byte("\x1b[3;3H")); err != nil {
+		t.Fatal(err)
+	}
+	a.updateTrail(frame, rows, trailNow.Add(33*time.Millisecond))
+
+	if !frame.Cells[0][9].Reverse {
+		t.Fatal("ghost should be painted at the departed alt-screen cell")
+	}
+	if !frame.Cells[0][8].Reverse {
+		t.Fatal("the path between the two positions should be filled (gapless)")
+	}
+	if frame.Cells[2][2].Reverse {
+		t.Fatal("the live cursor cell should not be ghost-painted")
+	}
+}

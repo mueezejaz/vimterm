@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"vimterm/internal/clipboard"
 	"vimterm/internal/config"
 	"vimterm/internal/console"
+	"vimterm/internal/cursortrail"
 	"vimterm/internal/emulator"
 	"vimterm/internal/keybind"
 	"vimterm/internal/macro"
@@ -24,6 +26,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 )
+
+var trailLog *os.File
+
+func init() {
+	if os.Getenv("VIMTERM_DEBUG_TRAIL") != "" {
+		f, err := os.CreateTemp("", "vimterm-trail-debug-*.log")
+		if err == nil {
+			trailLog = f
+		}
+	}
+}
 
 // App is the top-level application state.
 type App struct {
@@ -124,6 +137,7 @@ type App struct {
 	screenCols    int
 	screenRows    int
 	r             *render.Renderer
+	trail         *cursortrail.Trail
 }
 
 // Run starts the application and blocks until it exits.
@@ -178,6 +192,7 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 		curBlink:   true,
 		lastInput:  time.Now(),
 		r:          render.New(),
+		trail:      cursortrail.New(cursortrail.DefaultConfig()),
 	}
 
 	t, err := a.spawnTab(cfg.General.Shell, cfg.General.ShellArgs, cols, termRows)
@@ -384,6 +399,34 @@ func (a *App) applyConfig(cfg *config.Config) error {
 	a.engine.SetTimeout(timeout)
 	activeEmulator(a).SetScrollbackSize(cfg.General.Scrollback)
 
+	// Cursor trail config.
+	trailCfg := cursortrail.Config{
+		Enabled:      cfg.CursorTrail.Enabled != nil && *cfg.CursorTrail.Enabled,
+		Duration:     300 * time.Millisecond,
+		MaxPositions: 12,
+	}
+	if cfg.CursorTrail.Duration != nil {
+		trailCfg.Duration = time.Duration(*cfg.CursorTrail.Duration) * time.Millisecond
+	}
+	if cfg.CursorTrail.MaxPositions != nil {
+		trailCfg.MaxPositions = *cfg.CursorTrail.MaxPositions
+	}
+	if cfg.CursorTrail.Easing != nil {
+		switch *cfg.CursorTrail.Easing {
+		case "ease_in":
+			trailCfg.Easing = cursortrail.EasingEaseIn
+		case "ease_out":
+			trailCfg.Easing = cursortrail.EasingEaseOut
+		case "ease_in_out":
+			trailCfg.Easing = cursortrail.EasingEaseInOut
+		}
+	}
+	a.trail.SetConfig(trailCfg)
+	if trailLog != nil {
+		fmt.Fprintf(trailLog, "applyConfig: enabled=%v dur=%v maxPos=%v opacity=%v\n",
+			trailCfg.Enabled, trailCfg.Duration, trailCfg.MaxPositions, a.trailOpacity())
+	}
+
 	a.cfgMu.Lock()
 	a.cmdSeqs = seqs
 	a.statusFg, a.statusBg = statusFg, statusBg
@@ -419,6 +462,16 @@ func (a *App) scrollbackSize() int {
 	a.cfgMu.RLock()
 	defer a.cfgMu.RUnlock()
 	return a.cfg.General.Scrollback
+}
+
+// trailOpacity returns the configured cursor trail opacity.
+func (a *App) trailOpacity() float64 {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	if a.cfg.CursorTrail.Opacity != nil {
+		return *a.cfg.CursorTrail.Opacity
+	}
+	return 0.6
 }
 
 // customCommand returns the key sequence bound to a custom colon-command.
@@ -485,6 +538,11 @@ func (a *App) loop(ctx context.Context) error {
 			// visibility on the blink cadence. Any input resets it to solid.
 			if want := cursorBlinkPhase(time.Now(), a.lastInput); want != a.curBlink {
 				a.curBlink = want
+				a.dirty.Store(true)
+			}
+			// Cursor trail: keep repainting while ghosts are fading so the
+			// trail animates to completion even without further input.
+			if a.trail.Enabled() && a.trail.Active(time.Now()) {
 				a.dirty.Store(true)
 			}
 			if !a.dirty.Swap(false) {
@@ -633,6 +691,8 @@ func (a *App) renderFrame(frame *render.Frame) {
 		a.altScreen = alt
 		a.applyChildRows(a.screenCols, a.screenRows)
 		a.curValid = false
+		// Ghosts recorded on the other screen buffer are meaningless here.
+		a.trail.Reset()
 	}
 
 	sbLen := a.emu.ScrollbackLen()
@@ -746,7 +806,83 @@ func (a *App) renderFrame(frame *render.Frame) {
 	if a.prompt != nil && a.prompt.kind == promptTabs {
 		a.drawTabPopup(frame)
 	}
+
+	// Record the cursor position for the trail and paint fading ghost cursors
+	// into the frame cells.
+	a.updateTrail(frame, rows, time.Now())
+
 	a.r.Draw(a.con, frame)
+}
+
+// updateTrail records the live cursor position and paints fading ghost
+// cursors into the frame cells. It works on both screen buffers: the primary
+// screen uses the virtual cursor in normal/visual mode and the shell cursor
+// in insert mode, and the alternate screen (full-screen apps like nvim or
+// opencode) always drives from the shell cursor — so their cursor movements
+// animate too. Ghosts live on absolute buffer lines and are resolved to
+// viewport rows at paint time, so they stay glued to their text while the
+// viewport scrolls.
+func (a *App) updateTrail(frame *render.Frame, rows int, now time.Time) {
+	if a.prompt != nil {
+		return
+	}
+	top := a.topAbsLine()
+	if a.mods.Is(mode.ModeInsert) {
+		cx, cy := a.emu.Cursor()
+		a.trail.Record(cx, top+cy, now)
+		// Debug: log trail state
+		if trailLog != nil {
+			fmt.Fprintf(trailLog, "record(shell) col=%d line=%d ghosts=%d enabled=%v dur=%v\n",
+				cx, top+cy, len(a.trail.Ghosts(now)), a.trail.Enabled(), a.trail.Duration())
+		}
+		a.paintTrailGhosts(frame, rows, now, cx, top+cy)
+	} else if a.curValid {
+		a.trail.Record(a.cur.Col, a.cur.Line, now)
+		// Debug: log trail state
+		if trailLog != nil {
+			fmt.Fprintf(trailLog, "record col=%d line=%d ghosts=%d enabled=%v dur=%v\n",
+				a.cur.Col, a.cur.Line, len(a.trail.Ghosts(now)), a.trail.Enabled(), a.trail.Duration())
+		}
+		a.paintTrailGhosts(frame, rows, now, a.cur.Col, a.cur.Line)
+	}
+}
+
+// paintTrailGhosts materializes the trail's fading ghost cursors into the
+// frame cells so the diff renderer paints and later clears them like any
+// other cell change. Each ghost is resolved from its absolute buffer line to
+// a viewport row; the cell under the live cursor (skipX, skipLine) is skipped
+// because the cursor block or host cursor already marks it.
+func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, skipX, skipLine int) {
+	ghosts := a.trail.Ghosts(now)
+	if len(ghosts) == 0 {
+		return
+	}
+	top := a.topAbsLine()
+	maxOp := a.trailOpacity()
+	for _, g := range ghosts {
+		y := g.Line - top
+		if y < 0 || y >= rows || g.X < 0 || g.X >= frame.Cols {
+			continue
+		}
+		if g.X == skipX && g.Line == skipLine {
+			continue
+		}
+		cell := &frame.Cells[y][g.X]
+		if cell.Width == 0 {
+			// Wide-character continuation: the lead cell carries the glyph.
+			continue
+		}
+		op := maxOp * g.Opacity
+		if op <= 0 {
+			continue
+		}
+		if !a.haveTheme {
+			cell.Reverse = true
+			continue
+		}
+		cell.Fg, cell.Bg = trailGhostStyle(*cell, op, a.themeFg, a.themeBg)
+		cell.Reverse = false
+	}
 }
 
 func (a *App) resize(cols, rows int) {
@@ -757,6 +893,7 @@ func (a *App) resize(cols, rows int) {
 	a.screenCols, a.screenRows = cols, rows
 	// Buffer coordinates may have shifted; re-derive the cursor lazily.
 	a.curValid = false
+	a.trail.Reset()
 	if a.sel.Active {
 		a.syncCursor()
 		a.sel.Move(a.cur)

@@ -91,7 +91,6 @@ func New() *Renderer {
 // when visible.
 func (r *Renderer) Draw(w io.Writer, f *Frame) {
 	if r.prev != nil && (len(r.prev) != f.Rows || (f.Rows > 0 && len(r.prev[0]) != f.Cols)) {
-		// The grid changed shape; everything must be redrawn.
 		r.prev = nil
 	}
 
@@ -112,10 +111,6 @@ func (r *Renderer) Draw(w io.Writer, f *Frame) {
 			if from < 0 {
 				continue
 			}
-			// A diff first showing on a wide character's continuation cell
-			// must not start the redraw mid-glyph: the placeholder itself is
-			// skipped, so the host cursor would sit inside the glyph and
-			// every later write lands one column short. Back up to the lead.
 			for from > 0 && row[from].Width == 0 {
 				from--
 			}
@@ -352,28 +347,6 @@ func writeStyle(sb *strings.Builder, st style) {
 	if started {
 		sb.WriteByte('m')
 	}
-}
-
-func fgRGB(c emulator.Color) string {
-	var b strings.Builder
-	b.WriteString("38;2;")
-	b.WriteString(itoa(int(c.R)))
-	b.WriteByte(';')
-	b.WriteString(itoa(int(c.G)))
-	b.WriteByte(';')
-	b.WriteString(itoa(int(c.B)))
-	return b.String()
-}
-
-func bgRGB(c emulator.Color) string {
-	var b strings.Builder
-	b.WriteString("48;2;")
-	b.WriteString(itoa(int(c.R)))
-	b.WriteByte(';')
-	b.WriteString(itoa(int(c.G)))
-	b.WriteByte(';')
-	b.WriteString(itoa(int(c.B)))
-	return b.String()
 }
 
 func itoa(n int) string {

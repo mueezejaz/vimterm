@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"vimterm/internal/config"
+	"vimterm/internal/cursortrail"
 	"vimterm/internal/emulator"
 	"vimterm/internal/keybind"
 	"vimterm/internal/macro"
@@ -32,6 +33,7 @@ func newTabTestApp(t *testing.T, n int) *App {
 		screenRows: 10,
 		curBlink:   true,
 		lastInput:  time.Now(),
+		trail:      cursortrail.New(cursortrail.DefaultConfig()),
 	}
 	leader, err := keybind.ParseLeader(cfg.General.Leader)
 	if err != nil {

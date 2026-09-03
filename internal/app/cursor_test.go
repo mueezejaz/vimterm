@@ -30,8 +30,8 @@ func TestCursorBlockStyle(t *testing.T) {
 	red := emulator.Color{R: 255, G: 0, B: 0}
 
 	cases := []struct {
-		name      string
-		cell      emulator.Cell
+		name           string
+		cell           emulator.Cell
 		wantFg, wantBg emulator.Color
 	}{
 		{

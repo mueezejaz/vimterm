@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"vimterm/internal/config"
+	"vimterm/internal/cursortrail"
 	"vimterm/internal/emulator"
 	"vimterm/internal/keybind"
 	"vimterm/internal/macro"
@@ -44,6 +45,8 @@ func newMotionApp(t *testing.T, cols, rows int, content string) *App {
 		vp:     screen.New(rows),
 		engine: keybind.NewEngine(),
 		macro:  macro.New(),
+		cfg:    cfg,
+		trail:  cursortrail.New(cursortrail.DefaultConfig()),
 	}
 	a.engine.SetKeymaps(keymaps)
 	// The production default is 1000ms; a plain 1000 here would be a

@@ -120,6 +120,7 @@ func (a *App) loadTab(i int) {
 func (a *App) switchTo(i int) {
 	a.storeCurrent()
 	a.loadTab(i)
+	a.trail.Reset()
 	a.applyChildRows(a.screenCols, a.screenRows)
 	a.dirty.Store(true)
 }

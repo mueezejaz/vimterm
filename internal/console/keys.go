@@ -16,25 +16,25 @@ const (
 )
 
 const (
-	vkBack     = 0x08
-	vkTab      = 0x09
-	vkReturn   = 0x0D
-	vkEscape   = 0x1B
-	vkSpace    = 0x20
-	vkPrior    = 0x21 // PageUp
-	vkNext     = 0x22 // PageDown
-	vkEnd      = 0x23
-	vkHome     = 0x24
-	vkLeft     = 0x25
-	vkUp       = 0x26
-	vkRight    = 0x27
-	vkDown     = 0x28
-	vkInsert   = 0x2D
-	vkDelete   = 0x2E
-	vkA        = 0x41
-	vkZ        = 0x5A
-	vkF1       = 0x70
-	vkF24      = 0x87
+	vkBack   = 0x08
+	vkTab    = 0x09
+	vkReturn = 0x0D
+	vkEscape = 0x1B
+	vkSpace  = 0x20
+	vkPrior  = 0x21 // PageUp
+	vkNext   = 0x22 // PageDown
+	vkEnd    = 0x23
+	vkHome   = 0x24
+	vkLeft   = 0x25
+	vkUp     = 0x26
+	vkRight  = 0x27
+	vkDown   = 0x28
+	vkInsert = 0x2D
+	vkDelete = 0x2E
+	vkA      = 0x41
+	vkZ      = 0x5A
+	vkF1     = 0x70
+	vkF24    = 0x87
 )
 
 // keyFromRecord converts a raw console KEY_EVENT_RECORD into a keybind.Key.

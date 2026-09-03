@@ -101,6 +101,21 @@ func (kb *Keybindings) ActionTables() map[string]map[string][]string {
 	return tables
 }
 
+// CursorTrail configures the cursor trail (smear) effect.
+type CursorTrail struct {
+	// Enabled toggles the cursor trail effect.
+	Enabled *bool `toml:"enabled"`
+	// Duration is how long each ghost cursor lives in milliseconds.
+	Duration *int `toml:"duration"`
+	// Opacity is the maximum opacity of the newest ghost (0.0-1.0).
+	Opacity *float64 `toml:"opacity"`
+	// MaxPositions is the initial ring buffer capacity for trail positions.
+	MaxPositions *int `toml:"max_positions"`
+	// Easing shapes the fade and the jump sweep: linear, ease_in, ease_out
+	// or ease_in_out.
+	Easing *string `toml:"easing"`
+}
+
 // Colors holds user-configurable color overrides. Empty strings mean the
 // terminal default.
 type Colors struct {
@@ -118,6 +133,7 @@ type Config struct {
 	Keybindings Keybindings `toml:"keybindings"`
 	Colors      Colors      `toml:"colors"`
 	Commands    Commands    `toml:"commands"`
+	CursorTrail CursorTrail `toml:"cursor_trail"`
 }
 
 // Default returns the built-in defaults.
@@ -296,6 +312,13 @@ func Load(path string) (*Config, error) {
 		StatusFg *string `toml:"status_fg"`
 		StatusBg *string `toml:"status_bg"`
 	}
+	type probeCursorTrail struct {
+		Enabled      *bool    `toml:"enabled"`
+		Duration     *int     `toml:"duration"`
+		Opacity      *float64 `toml:"opacity"`
+		MaxPositions *int     `toml:"max_positions"`
+		Easing       *string  `toml:"easing"`
+	}
 	type probeKeybindings struct {
 		Normal *map[string]Binding `toml:"normal"`
 		Insert *map[string]Binding `toml:"insert"`
@@ -306,6 +329,7 @@ func Load(path string) (*Config, error) {
 		Keybindings probeKeybindings   `toml:"keybindings"`
 		Colors      probeColors        `toml:"colors"`
 		Commands    *map[string]string `toml:"commands"`
+		CursorTrail probeCursorTrail   `toml:"cursor_trail"`
 	}
 	var probe probeConfig
 
@@ -351,6 +375,21 @@ func Load(path string) (*Config, error) {
 	if probe.Commands != nil {
 		cfg.Commands = *probe.Commands
 	}
+	if probe.CursorTrail.Enabled != nil {
+		cfg.CursorTrail.Enabled = probe.CursorTrail.Enabled
+	}
+	if probe.CursorTrail.Duration != nil {
+		cfg.CursorTrail.Duration = probe.CursorTrail.Duration
+	}
+	if probe.CursorTrail.Opacity != nil {
+		cfg.CursorTrail.Opacity = probe.CursorTrail.Opacity
+	}
+	if probe.CursorTrail.MaxPositions != nil {
+		cfg.CursorTrail.MaxPositions = probe.CursorTrail.MaxPositions
+	}
+	if probe.CursorTrail.Easing != nil {
+		cfg.CursorTrail.Easing = probe.CursorTrail.Easing
+	}
 	if cfg.General.Shell == "" {
 		cfg.General.Shell = "powershell.exe"
 	}
@@ -367,6 +406,45 @@ func Load(path string) (*Config, error) {
 		}
 	default:
 		return nil, fmt.Errorf("config: general: status_merge: invalid value %q (want auto, always or never)", cfg.General.StatusMerge)
+	}
+	// Cursor trail defaults and validation.
+	if cfg.CursorTrail.Enabled == nil {
+		b := false // disabled by default
+		cfg.CursorTrail.Enabled = &b
+	}
+	if cfg.CursorTrail.Duration == nil {
+		d := 300
+		cfg.CursorTrail.Duration = &d
+	} else if *cfg.CursorTrail.Duration < 0 {
+		d := 0
+		cfg.CursorTrail.Duration = &d
+	}
+	if cfg.CursorTrail.Opacity == nil {
+		o := 0.6
+		cfg.CursorTrail.Opacity = &o
+	} else if *cfg.CursorTrail.Opacity < 0 {
+		o := 0.0
+		cfg.CursorTrail.Opacity = &o
+	} else if *cfg.CursorTrail.Opacity > 1 {
+		o := 1.0
+		cfg.CursorTrail.Opacity = &o
+	}
+	if cfg.CursorTrail.MaxPositions == nil {
+		m := 40
+		cfg.CursorTrail.MaxPositions = &m
+	} else if *cfg.CursorTrail.MaxPositions < 4 {
+		m := 4
+		cfg.CursorTrail.MaxPositions = &m
+	}
+	if cfg.CursorTrail.Easing == nil {
+		e := "linear"
+		cfg.CursorTrail.Easing = &e
+	} else {
+		switch *cfg.CursorTrail.Easing {
+		case "linear", "ease_in", "ease_out", "ease_in_out":
+		default:
+			return nil, fmt.Errorf("config: cursor_trail: easing: invalid value %q (want linear, ease_in, ease_out or ease_in_out)", *cfg.CursorTrail.Easing)
+		}
 	}
 	// TOML cannot distinguish an absent table from an empty one; treat
 	// absent sections as "use the defaults" so a minimal config keeps
@@ -530,4 +608,13 @@ status_bg = ""
 "i" = "enter_insert"
 "esc" = "enter_normal"
 "ctrl+q" = "quit"
+
+# Cursor trail (smear) effect: shows fading ghost cursors at recent positions.
+# Disabled by default; enable and tune to your taste.
+# [cursor_trail]
+# enabled = true
+# duration = 300       # ms each ghost lives
+# opacity = 0.6        # max opacity of newest ghost (0.0-1.0)
+# max_positions = 40   # initial ring capacity (grows to fit long jumps)
+# easing = "linear"    # linear, ease_in, ease_out or ease_in_out
 `

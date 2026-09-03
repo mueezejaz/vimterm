@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"vimterm/internal/config"
+	"vimterm/internal/cursortrail"
 	"vimterm/internal/emulator"
 	"vimterm/internal/keybind"
 	"vimterm/internal/macro"
@@ -49,6 +50,7 @@ func realApp(t *testing.T, cols, hostRows int, content string) *App {
 		screenCols: cols,
 		screenRows: hostRows,
 		curBlink:   true,
+		trail:      cursortrail.New(cursortrail.DefaultConfig()),
 	}
 	a.tabs = []*tabState{newTabState(nil, emu, termRows)}
 	a.active = 0

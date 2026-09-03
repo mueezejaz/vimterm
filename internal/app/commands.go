@@ -5,15 +5,15 @@ import "strings"
 // builtinCommands lists the colon-command names the app understands
 // natively; custom commands from [commands] cannot shadow them.
 var builtinCommands = map[string]bool{
-	"quit":     true,
-	"clear":    true,
-	"shell":    true,
-	"new":      true,
-	"tabnew":   true,
-	"close":    true,
-	"tabclose": true,
-	"rename":   true,
-	"noh":      true,
+	"quit":       true,
+	"clear":      true,
+	"shell":      true,
+	"new":        true,
+	"tabnew":     true,
+	"close":      true,
+	"tabclose":   true,
+	"rename":     true,
+	"noh":        true,
 	"nohlsearch": true,
 }
 

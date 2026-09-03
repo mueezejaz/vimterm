@@ -229,7 +229,6 @@ func TestRendererFullRedrawOnResize(t *testing.T) {
 	}
 }
 
-
 // A change landing first on a wide character's continuation cell used to
 // start the redraw mid-glyph: the placeholder itself is skipped (so a
 // cursor/selection change on the right half emitted nothing at all), and

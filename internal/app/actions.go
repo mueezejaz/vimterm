@@ -374,6 +374,8 @@ func (a *App) enterInsert() {
 	a.vp.GotoBottom()
 	a.mods.Enter(mode.ModeInsert)
 	a.curValid = false
+	// No trail reset: the shell cursor takes over recording in insert mode,
+	// so the transition animates from the virtual cursor's position.
 	a.dirty.Store(true)
 }
 
@@ -483,6 +485,46 @@ func cursorBlockStyle(cell emulator.Cell, themeFg, themeBg emulator.Color) (fg, 
 		fg, bg = bg, fg
 	}
 	return bg, fg
+}
+
+// trailGhostStyle returns the blended colors for one ghost cursor cell drawn
+// over the given cell. Strength 1 is exactly reverse video (a solid block
+// like the cursor); as strength drops both colors converge toward the cell's
+// rendered colors, so the ghost fades into the text. Reverse on the input
+// cell is resolved before blending so highlighted cells fade correctly; the
+// caller must clear Reverse on the ghost cell.
+func trailGhostStyle(cell emulator.Cell, strength float64, themeFg, themeBg emulator.Color) (fg, bg emulator.Color) {
+	fg, bg = cell.Fg, cell.Bg
+	zero := emulator.Color{}
+	if fg == zero || fg.Default {
+		fg = themeFg
+	}
+	if bg == zero || bg.Default {
+		bg = themeBg
+	}
+	if cell.Reverse {
+		fg, bg = bg, fg
+	}
+	if strength < 0 {
+		strength = 0
+	} else if strength > 1 {
+		strength = 1
+	}
+	return lerpColor(fg, bg, strength), lerpColor(bg, fg, strength)
+}
+
+// lerpColor mixes two colors: t=0 returns a, t=1 returns b.
+func lerpColor(a, b emulator.Color, t float64) emulator.Color {
+	mix := func(x, y uint8) uint8 {
+		v := float64(x) + (float64(y)-float64(x))*t + 0.5
+		if v < 0 {
+			v = 0
+		} else if v > 255 {
+			v = 255
+		}
+		return uint8(v)
+	}
+	return emulator.Color{R: mix(a.R, b.R), G: mix(a.G, b.G), B: mix(a.B, b.B)}
 }
 
 // cursorMoveSeq builds the escape sequences that move a line editor cursor

@@ -19,11 +19,11 @@ func (f *fakeSession) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (f *fakeSession) Read(p []byte) (int, error) { return 0, nil }
-func (f *fakeSession) Resize(int, int) error      { return nil }
-func (f *fakeSession) Kill() error                { return nil }
-func (f *fakeSession) Close() error               { return nil }
-func (f *fakeSession) Name() string               { return "fake" }
+func (f *fakeSession) Read(p []byte) (int, error)     { return 0, nil }
+func (f *fakeSession) Resize(int, int) error          { return nil }
+func (f *fakeSession) Kill() error                    { return nil }
+func (f *fakeSession) Close() error                   { return nil }
+func (f *fakeSession) Name() string                   { return "fake" }
 func (f *fakeSession) Wait(ctx context.Context) error { return nil }
 
 func pasteApp(t *testing.T, text string) (*App, *fakeSession) {
