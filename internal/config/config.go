@@ -114,6 +114,13 @@ type CursorTrail struct {
 	// Easing shapes the fade and the jump sweep: linear, ease_in, ease_out
 	// or ease_in_out.
 	Easing *string `toml:"easing"`
+	// Color is the trail dot color as "#RRGGBB". Empty or absent means
+	// use the terminal's default foreground color.
+	Color *string `toml:"color"`
+	// Glow controls the trail glow intensity (0.0-1.0). 0 means no glow,
+	// 1 means maximum glow. Glow brightens the trail dots by blending
+	// toward white.
+	Glow *float64 `toml:"glow"`
 }
 
 // Colors holds user-configurable color overrides. Empty strings mean the
@@ -318,6 +325,8 @@ func Load(path string) (*Config, error) {
 		Opacity      *float64 `toml:"opacity"`
 		MaxPositions *int     `toml:"max_positions"`
 		Easing       *string  `toml:"easing"`
+		Color        *string  `toml:"color"`
+		Glow         *float64 `toml:"glow"`
 	}
 	type probeKeybindings struct {
 		Normal *map[string]Binding `toml:"normal"`
@@ -390,6 +399,12 @@ func Load(path string) (*Config, error) {
 	if probe.CursorTrail.Easing != nil {
 		cfg.CursorTrail.Easing = probe.CursorTrail.Easing
 	}
+	if probe.CursorTrail.Color != nil {
+		cfg.CursorTrail.Color = probe.CursorTrail.Color
+	}
+	if probe.CursorTrail.Glow != nil {
+		cfg.CursorTrail.Glow = probe.CursorTrail.Glow
+	}
 	if cfg.General.Shell == "" {
 		cfg.General.Shell = "powershell.exe"
 	}
@@ -445,6 +460,21 @@ func Load(path string) (*Config, error) {
 		default:
 			return nil, fmt.Errorf("config: cursor_trail: easing: invalid value %q (want linear, ease_in, ease_out or ease_in_out)", *cfg.CursorTrail.Easing)
 		}
+	}
+	if cfg.CursorTrail.Color != nil && *cfg.CursorTrail.Color != "" {
+		if _, ok := ParseHexColor(*cfg.CursorTrail.Color); !ok {
+			return nil, fmt.Errorf("config: cursor_trail: color: invalid color %q (want #RRGGBB)", *cfg.CursorTrail.Color)
+		}
+	}
+	if cfg.CursorTrail.Glow == nil {
+		g := 0.0
+		cfg.CursorTrail.Glow = &g
+	} else if *cfg.CursorTrail.Glow < 0 {
+		g := 0.0
+		cfg.CursorTrail.Glow = &g
+	} else if *cfg.CursorTrail.Glow > 1 {
+		g := 1.0
+		cfg.CursorTrail.Glow = &g
 	}
 	// TOML cannot distinguish an absent table from an empty one; treat
 	// absent sections as "use the defaults" so a minimal config keeps

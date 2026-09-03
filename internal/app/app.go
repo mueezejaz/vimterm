@@ -474,6 +474,29 @@ func (a *App) trailOpacity() float64 {
 	return 0.6
 }
 
+// trailColor returns the configured trail dot color, or the zero value if
+// the user hasn't set one (meaning "use the terminal default foreground").
+func (a *App) trailColor() emulator.Color {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	if a.cfg.CursorTrail.Color != nil {
+		if c, ok := config.ParseHexColor(*a.cfg.CursorTrail.Color); ok {
+			return emulator.Color{R: c.R, G: c.G, B: c.B}
+		}
+	}
+	return emulator.Color{}
+}
+
+// trailGlow returns the configured trail glow intensity (0.0–1.0).
+func (a *App) trailGlow() float64 {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	if a.cfg.CursorTrail.Glow != nil {
+		return *a.cfg.CursorTrail.Glow
+	}
+	return 0.0
+}
+
 // customCommand returns the key sequence bound to a custom colon-command.
 func (a *App) customCommand(name string) ([]keybind.Key, bool) {
 	a.cfgMu.RLock()
@@ -862,6 +885,10 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 	}
 	top := a.topAbsLine()
 	maxOp := a.trailOpacity()
+	trailColor := a.trailColor()
+	glow := a.trailGlow()
+	// glowWhite is the glow target: blend toward white for the glow effect.
+	glowWhite := emulator.Color{R: 255, G: 255, B: 255}
 	for _, g := range ghosts {
 		y := g.Line - top
 		if y < 0 || y >= rows || g.X < 0 || g.X >= frame.Cols {
@@ -879,6 +906,17 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 		if op <= 0 {
 			continue
 		}
+		// Resolve the base trail foreground color: user-configured
+		// color takes priority, then theme foreground.
+		baseFg := a.themeFg
+		zero := emulator.Color{}
+		if trailColor != zero {
+			baseFg = trailColor
+		}
+		// Apply glow: blend the base color toward white.
+		if glow > 0 {
+			baseFg = lerpColor(baseFg, glowWhite, glow)
+		}
 		if !a.haveTheme {
 			if g.BrailleMask != 0 {
 				cell.Content = trailBrailleGlyph(g.BrailleMask)
@@ -895,7 +933,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			if cell.Width != 1 {
 				continue
 			}
-			fg := lerpColor(a.themeBg, a.themeFg, op)
+			fg := lerpColor(a.themeBg, baseFg, op)
 			*cell = emulator.Cell{
 				Content: trailBrailleGlyph(g.BrailleMask),
 				Width:   1,
@@ -913,7 +951,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			if cell.Width != 1 {
 				continue
 			}
-			fg, bg := resolvedGhostColors(*cell, a.themeFg, a.themeBg)
+			fg, bg := resolvedGhostColors(*cell, baseFg, a.themeBg)
 			*cell = emulator.Cell{
 				Content: trailBlockGlyph(g.Mask),
 				Width:   1,
@@ -922,7 +960,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			}
 			continue
 		}
-		cell.Fg, cell.Bg = trailGhostStyle(*cell, op, a.themeFg, a.themeBg)
+		cell.Fg, cell.Bg = trailGhostStyle(*cell, op, baseFg, a.themeBg)
 		cell.Reverse = false
 	}
 }
