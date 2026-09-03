@@ -504,22 +504,6 @@ func resolvedGhostColors(cell emulator.Cell, themeFg, themeBg emulator.Color) (f
 	return fg, bg
 }
 
-// trailGhostStyle returns the blended colors for one ghost cursor cell drawn
-// over the given cell. Strength 1 is exactly reverse video (a solid block
-// like the cursor); as strength drops both colors converge toward the cell's
-// rendered colors, so the ghost fades into the text. Reverse on the input
-// cell is resolved before blending so highlighted cells fade correctly; the
-// caller must clear Reverse on the ghost cell.
-func trailGhostStyle(cell emulator.Cell, strength float64, themeFg, themeBg emulator.Color) (fg, bg emulator.Color) {
-	fg, bg = resolvedGhostColors(cell, themeFg, themeBg)
-	if strength < 0 {
-		strength = 0
-	} else if strength > 1 {
-		strength = 1
-	}
-	return lerpColor(fg, bg, strength), lerpColor(bg, fg, strength)
-}
-
 // trailBlockGlyph maps a 2x2 sub-cell coverage mask (bit0 upper-left, bit1
 // upper-right, bit2 lower-left, bit3 lower-right) to the Unicode block glyph
 // that paints the covered quarters in the foreground color and leaves the

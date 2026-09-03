@@ -63,58 +63,11 @@ func TestLerpColor(t *testing.T) {
 	}
 }
 
-func TestTrailGhostStyle(t *testing.T) {
-	white := emulator.Color{R: 255, G: 255, B: 255}
-	black := emulator.Color{R: 0, G: 0, B: 0}
-	red := emulator.Color{R: 255, G: 0, B: 0}
-	blue := emulator.Color{R: 0, G: 0, B: 255}
-
-	cases := []struct {
-		name             string
-		cell             emulator.Cell
-		strength         float64
-		themeFg, themeBg emulator.Color
-		wantFg, wantBg   emulator.Color
-	}{
-		{
-			name:     "strength 1 is exact reverse video",
-			cell:     emulator.Cell{Fg: white, Bg: black},
-			strength: 1,
-			wantFg:   black, wantBg: white,
-		},
-		{
-			name:     "strength 0 leaves colors untouched",
-			cell:     emulator.Cell{Fg: red, Bg: blue},
-			strength: 0,
-			wantFg:   red, wantBg: blue,
-		},
-		{
-			name:     "reverse cell resolves before blending",
-			cell:     emulator.Cell{Fg: red, Bg: blue, Reverse: true},
-			strength: 0,
-			wantFg:   blue, wantBg: red,
-		},
-		{
-			name:     "default colors resolve to theme",
-			cell:     emulator.Cell{Fg: emulator.Color{Default: true}, Bg: emulator.Color{Default: true}},
-			strength: 1,
-			themeFg:  white, themeBg: black,
-			wantFg: black, wantBg: white,
-		},
-		{
-			name:     "strength clamps above 1",
-			cell:     emulator.Cell{Fg: red, Bg: blue},
-			strength: 1.5,
-			wantFg:   blue, wantBg: red,
-		},
-	}
-	for _, tc := range cases {
-		fg, bg := trailGhostStyle(tc.cell, tc.strength, tc.themeFg, tc.themeBg)
-		if fg != tc.wantFg || bg != tc.wantBg {
-			t.Errorf("%s: trailGhostStyle = fg %+v bg %+v, want fg %+v bg %+v",
-				tc.name, fg, bg, tc.wantFg, tc.wantBg)
-		}
-	}
+// withTrailColor sets the configured cursor trail color for the test.
+func withTrailColor(a *App, hex string) {
+	a.cfgMu.Lock()
+	a.cfg.CursorTrail.Color = &hex
+	a.cfgMu.Unlock()
 }
 
 // TestPaintTrailGhostsFallback covers the no-theme path (plain reverse video)
@@ -156,19 +109,21 @@ func TestPaintTrailGhostsFallback(t *testing.T) {
 	}
 }
 
-// TestPaintTrailGhostsBlend covers the theme path: the ghost colors are a
-// strength-weighted mix of the cell's rendered colors.
+// TestPaintTrailGhostsBlend covers the theme path: a ghost over a letter
+// tints the glyph toward the trail color while keeping it visible, leaving
+// the background untouched.
 func TestPaintTrailGhostsBlend(t *testing.T) {
 	a := trailApp(t)
 	a.haveTheme = true
 	a.themeFg = emulator.Color{R: 255, G: 255, B: 255}
 	a.themeBg = emulator.Color{R: 0, G: 0, B: 0}
+	withTrailColor(a, "#FF0000")
 	frame := render.NewFrame(a.screenCols, a.screenRows)
 	rows := a.emu.Height()
 
 	// The ghost at line 5 departed 50ms ago (below the 64ms sweep dwell, so
 	// no interpolated streak): opacity 1-50/300 times the default max
-	// opacity 0.6 gives blend strength 0.5.
+	// opacity 0.6 gives tint strength 0.5.
 	a.trail.Record(0, 5, trailNow.Add(-100*time.Millisecond))
 	a.trail.Record(0, 11, trailNow.Add(-50*time.Millisecond))
 
@@ -176,13 +131,133 @@ func TestPaintTrailGhostsBlend(t *testing.T) {
 	a.paintTrailGhosts(frame, rows, trailNow, 0, 11)
 
 	cell := frame.Cells[2][0]
-	wantFg := emulator.Color{R: 128, G: 128, B: 128}
-	wantBg := emulator.Color{R: 128, G: 128, B: 128}
+	// White theme fg tinted 50% toward red: R stays 255, G/B halve.
+	wantFg := emulator.Color{R: 255, G: 128, B: 128}
+	wantBg := emulator.Color{R: 0, G: 0, B: 0, Default: true}
 	if cell.Reverse {
-		t.Error("blended ghost cell should not use the reverse attribute")
+		t.Error("tinted ghost cell should not use the reverse attribute")
 	}
 	if cell.Fg != wantFg || cell.Bg != wantBg {
 		t.Errorf("ghost cell = fg %+v bg %+v, want fg %+v bg %+v", cell.Fg, cell.Bg, wantFg, wantBg)
+	}
+	if cell.Content != "l" {
+		t.Errorf("ghost over a letter = %q, want the glyph preserved", cell.Content)
+	}
+}
+
+// TestPaintTrailGhostsPlainGhost verifies plain departure ghosts share the
+// sweep's color language: letters under the trail tint toward the trail color
+// and stay readable, blank cells carry the full 8-dot ball.
+func TestPaintTrailGhostsPlainGhost(t *testing.T) {
+	a := trailApp(t)
+	a.haveTheme = true
+	a.themeFg = emulator.Color{R: 255, G: 255, B: 255}
+	a.themeBg = emulator.Color{R: 0, G: 0, B: 0}
+	withTrailColor(a, "#FF0000")
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	rows := a.emu.Height()
+
+	// Walk one cell at a time across "line five" (no sweeps: each move is
+	// a single cell). Ghosts are born at each departure; the live cursor
+	// ends at (5,5).
+	steps := []struct {
+		col int
+		at  time.Duration
+	}{
+		{0, -time.Second}, // seed
+		{1, -100 * time.Millisecond},
+		{2, -90 * time.Millisecond},
+		{3, -80 * time.Millisecond},
+		{4, -70 * time.Millisecond},
+		{5, -60 * time.Millisecond},
+	}
+	for _, s := range steps {
+		a.trail.Record(s.col, 5, trailNow.Add(s.at))
+	}
+
+	fillFrame(a, frame, rows, 0)
+	a.paintTrailGhosts(frame, rows, trailNow, 5, 5)
+
+	// Line 5 sits at viewport row 2. Column 0 holds 'l', column 4 the
+	// space. Age 100ms → opacity (1-100/300)*0.6 = 0.4; age 60ms → 0.48.
+	if got := frame.Cells[2][0]; got.Content != "l" {
+		t.Errorf("ghost over 'l' = %q, want the glyph preserved", got.Content)
+	} else if want := (emulator.Color{R: 255, G: 153, B: 153}); got.Fg != want {
+		t.Errorf("ghost over 'l' fg = %+v, want %+v", got.Fg, want)
+	}
+	if got := frame.Cells[2][4]; got.Content != trailBrailleGlyph(0xFF) {
+		t.Errorf("ghost over a space = %q, want full ball %q", got.Content, trailBrailleGlyph(0xFF))
+	} else if want := (emulator.Color{R: 122, G: 0, B: 0}); got.Fg != want {
+		t.Errorf("ghost over a space fg = %+v, want %+v", got.Fg, want)
+	}
+	if got := frame.Cells[2][1]; got.Content != "i" {
+		t.Errorf("ghost over 'i' = %q, want the glyph preserved", got.Content)
+	}
+}
+
+// TestPaintTrailGhostsSweepOverText verifies the jump comet keeps its dots
+// when it crosses text: sweep cells over glyphs stamp their braille pattern
+// (full balls shrink to the center cluster) instead of falling back to the
+// plain-ghost tint, so word jumps stay visible.
+func TestPaintTrailGhostsSweepOverText(t *testing.T) {
+	a := trailApp(t)
+	a.haveTheme = true
+	a.themeFg = emulator.Color{R: 255, G: 255, B: 255}
+	a.themeBg = emulator.Color{R: 0, G: 0, B: 0}
+	withTrailColor(a, "#FF0000")
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	rows := a.emu.Height()
+
+	// Depart line 5 after only 50ms of dwell — below the 64ms stagger
+	// threshold, so the sweep paints uniformly at opacity (1-50/300)*0.6
+	// = 0.5 (a longer dwell would stagger per-cell birth times).
+	a.trail.Record(0, 5, trailNow.Add(-100*time.Millisecond))
+	a.trail.Record(15, 5, trailNow.Add(-50*time.Millisecond))
+
+	fillFrame(a, frame, rows, 0)
+	a.paintTrailGhosts(frame, rows, trailNow, 15, 5)
+
+	// Line 5 sits at viewport row 2. The band crosses 'i' at column 1 (a
+	// glyph, so the full-coverage ball shrinks to the 4-dot cluster) and
+	// the space at column 4 (full ball). Both take the dot foreground
+	// lerp(black, red, 0.5), never the tint.
+	if got := frame.Cells[2][1]; got.Content != trailBrailleGlyph(0x3C) {
+		t.Errorf("sweep over 'i' = %q, want the 4-dot cluster %q", got.Content, trailBrailleGlyph(0x3C))
+	} else if want := (emulator.Color{R: 128, G: 0, B: 0}); got.Fg != want {
+		t.Errorf("sweep over 'i' fg = %+v, want %+v", got.Fg, want)
+	}
+	if got := frame.Cells[2][4]; got.Content != trailBrailleGlyph(0xFF) {
+		t.Errorf("sweep over a space = %q, want full ball %q", got.Content, trailBrailleGlyph(0xFF))
+	} else if want := (emulator.Color{R: 128, G: 0, B: 0}); got.Fg != want {
+		t.Errorf("sweep over a space fg = %+v, want %+v", got.Fg, want)
+	}
+}
+
+// TestPaintTrailGhostsPlainWideChar verifies a plain ghost on a wide-character
+// lead cell keeps the glyph and fades as inverse video instead of stamping
+// braille over the paired glyph.
+func TestPaintTrailGhostsPlainWideChar(t *testing.T) {
+	a := realApp(t, 20, 10, "日本語テスト\r\nsecond line")
+	a.haveTheme = true
+	a.themeFg = emulator.Color{R: 255, G: 255, B: 255}
+	a.themeBg = emulator.Color{R: 0, G: 0, B: 0}
+	a.curValid = true
+	a.cur = selection.Pos{Line: 1, Col: 0}
+	frame := render.NewFrame(a.screenCols, a.screenRows)
+	rows := a.emu.Height()
+
+	a.trail.Record(0, 0, trailNow.Add(-time.Second)) // seed on the lead cell
+	a.trail.Record(0, 1, trailNow.Add(-100*time.Millisecond))
+
+	fillFrame(a, frame, rows, 0)
+	a.paintTrailGhosts(frame, rows, trailNow, 0, 1)
+
+	cell := frame.Cells[0][0]
+	if cell.Content != "日" {
+		t.Errorf("wide lead cell content = %q, want the glyph preserved", cell.Content)
+	}
+	if cell.Reverse {
+		t.Error("wide lead cell ghost should blend colors, not use reverse video")
 	}
 }
 

@@ -874,10 +874,16 @@ func (a *App) updateTrail(frame *render.Frame, rows int, now time.Time) {
 // frame cells so the diff renderer paints and later clears them like any
 // other cell change. Each ghost is resolved from its absolute buffer line to
 // a viewport row; the cell under the live cursor (skipX, skipLine) is skipped
-// because the cursor block or host cursor already marks it. Sweep ghosts
-// carrying a braille mask render as Unicode braille glyphs (2×4 sub-cell
-// resolution), while those with a quarter-cell mask render as Unicode block
-// glyphs. Both reduce staircase artifacts on diagonal trails.
+// because the cursor block or host cursor already marks it. Blank cells
+// render as Unicode braille (2×4 sub-cell resolution, no staircase artifacts
+// on diagonals): sweep masks use their computed dot pattern and plain
+// departure ghosts the full 8-dot ball so single-cell moves share the sweep's
+// dotted look. Plain ghosts over a glyph tint the character toward the trail
+// color instead — a cell has one glyph slot, so dots stamped over a letter
+// would hide it and read as missing text while they fade. Sweep dots do cross
+// text (they move and expire quickly, reading as motion), with full balls
+// shrinking to a 4-dot cluster over glyphs. Quarter-cell masks render as
+// Unicode block glyphs.
 func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, skipX, skipLine int) {
 	ghosts := a.trail.Ghosts(now)
 	if len(ghosts) == 0 {
@@ -917,37 +923,56 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 		if glow > 0 {
 			baseFg = lerpColor(baseFg, glowWhite, glow)
 		}
+		isPlain := g.BrailleMask == 0 && g.Mask == 0
+		// A plain ghost (typing, single-cell moves) never stamps dots over
+		// a letter — with one glyph slot per cell the character would
+		// vanish under the pattern and read as missing text as the dots
+		// faded out. Instead the glyph itself is tinted toward the trail
+		// color and fades back, staying readable the whole time. Sweep
+		// ghosts (the jump comet) do stamp dots over text: they move and
+		// expire quickly, so they read as motion rather than missing
+		// characters.
+		if isPlain && cellHasGlyph(cell.Content) {
+			if !a.haveTheme {
+				cell.Reverse = true
+				continue
+			}
+			// Resolve against the real theme foreground (not the trail
+			// color, or default-fg letters would already be the tint
+			// target and never fade), then tint toward the trail color.
+			fg, bg := resolvedGhostColors(*cell, a.themeFg, a.themeBg)
+			cell.Fg = lerpColor(fg, baseFg, op)
+			if cell.Reverse {
+				cell.Bg = bg
+				cell.Reverse = false
+			}
+			continue
+		}
+		mask := g.BrailleMask
+		if isPlain {
+			// Plain departure ghost on a blank cell: the full 8-dot ball,
+			// the same shape as the sweep's comet head, so single-cell
+			// moves share the sweep's dotted look.
+			mask = 0xFF
+		} else if mask == 0xFF && cellHasGlyph(cell.Content) {
+			// A full ball covers the whole glyph (the comet head, or a
+			// sweep cell the band crosses dead-center); over text shrink
+			// it to the 4-dot center cluster so the moving marker stays
+			// small instead of blotting the character out.
+			mask = 0x3C
+		}
 		if !a.haveTheme {
-			if g.BrailleMask != 0 {
-				cell.Content = trailBrailleGlyph(g.BrailleMask)
+			if mask != 0 {
+				cell.Content = trailBrailleGlyph(mask)
 			} else if g.Mask != 0 {
 				cell.Content = trailBlockGlyph(g.Mask)
 			}
 			cell.Reverse = true
 			continue
 		}
-		if g.BrailleMask != 0 {
-			// Braille dot pattern: dots take the ghost foreground,
-			// the cell background stays intact. Braille provides
-			// 2×4 sub-cell resolution for smooth diagonal trails.
-			if cell.Width != 1 {
-				continue
-			}
-			fg := lerpColor(a.themeBg, baseFg, op)
-			*cell = emulator.Cell{
-				Content: trailBrailleGlyph(g.BrailleMask),
-				Width:   1,
-				Fg:      fg,
-				Bg:      cell.Bg,
-			}
-			continue
-		}
-		if g.Mask != 0 {
-			// Sub-cell block: covered quarters take the ghost fill (the
-			// color reverse video would paint at full strength), the rest
-			// keeps the cell's own background. Wide characters are left
-			// alone — splitting a glyph across a block edge would corrupt
-			// its cell pairing.
+		if g.Mask != 0 && g.BrailleMask == 0 {
+			// Quarter-cell block fallback (legacy masks): covered quarters
+			// take the ghost fill, the rest keeps the cell's background.
 			if cell.Width != 1 {
 				continue
 			}
@@ -960,9 +985,24 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			}
 			continue
 		}
-		cell.Fg, cell.Bg = trailGhostStyle(*cell, op, baseFg, a.themeBg)
-		cell.Reverse = false
+		if cell.Width != 1 {
+			continue
+		}
+		// Braille dots take the ghost foreground; the cell background
+		// stays intact, matching sweep trails.
+		*cell = emulator.Cell{
+			Content: trailBrailleGlyph(mask),
+			Width:   1,
+			Fg:      lerpColor(a.themeBg, baseFg, op),
+			Bg:      cell.Bg,
+		}
 	}
+}
+
+// cellHasGlyph reports whether a frame cell carries visible text rather than
+// blank space, used to shrink full-braille ghost balls over characters.
+func cellHasGlyph(content string) bool {
+	return content != "" && content != " "
 }
 
 func (a *App) resize(cols, rows int) {

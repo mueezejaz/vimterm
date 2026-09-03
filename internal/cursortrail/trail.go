@@ -514,6 +514,23 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 		}
 		return keys[i][0] < keys[j][0]
 	})
+
+	// Compute the current head position along the path for the comet
+	// effect: the leading edge is bright, the tail fades behind it.
+	// headS is the path parameter [0,1] where the "ball" currently is.
+	headS := 1.0
+	if e.stagger {
+		sw := t.sweepWindow()
+		elapsed := now.Sub(e.t)
+		if sw > 0 && elapsed >= 0 {
+			progress := float64(elapsed) / float64(sw)
+			if progress > 1 {
+				progress = 1
+			}
+			headS = t.cfg.Easing.apply(progress)
+		}
+	}
+
 	out := make([]Ghost, 0, len(keys))
 	for _, k := range keys {
 		a := cells[k]
@@ -531,6 +548,26 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 		if op <= 0 {
 			continue
 		}
+		// Comet glow: boost opacity near the head (the "ball"), fade
+		// cells far behind it. Only applies to staggered sweeps where
+		// the head chases the cursor over time; non-staggered sweeps
+		// (fast motion) keep all cells at uniform opacity.
+		if e.stagger {
+			distBehind := headS - s
+			if distBehind < 0 {
+				distBehind = 0
+			}
+			// Staggered: strong comet — head 1.4× bright, tail 25%.
+			if distBehind < 0.15 {
+				op *= 1.0 + 0.4*(1.0-distBehind/0.15)
+			} else {
+				fade := 1.0 - 0.75*((distBehind-0.15)/0.85)
+				if fade < 0.25 {
+					fade = 0.25
+				}
+				op *= fade
+			}
+		}
 		// Edge fade: cells whose closest dot is far from the centerline
 		// get their opacity reduced. This creates a soft gradient at the
 		// band edges instead of a hard on/off boundary, making diagonal
@@ -544,8 +581,43 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 				edgeFade = 0.3
 			}
 		}
+		if op <= 0 {
+			continue
+		}
 		out = append(out, Ghost{X: cellX, Line: cellY, Opacity: op * edgeFade, BrailleMask: a.braille, MinDist: a.minDist})
 	}
+
+	// Head ball: add a bright, dense braille cell at the exact head
+	// position so the leading edge looks like a glowing "ball of dots".
+	if len(out) > 0 {
+		hx := px + dx*headS
+		hy := py + dy*headS
+		ballX := int(math.Floor(hx))
+		ballY := int(math.Floor(hy / 2))
+		if ballX >= 0 && ballY >= 0 && !(ballX == e.x && ballY == e.line) {
+			// Only add if not already a cell in the sweep (avoid
+			// overriding a sweep cell that's already bright).
+			key := [2]int{ballX, ballY}
+			if cells[key] == nil {
+				sw := t.sweepWindow()
+				elapsed := now.Sub(e.t)
+				headAge := elapsed - time.Duration(float64(sw)*headS)
+				if headAge < 0 {
+					headAge = 0
+				}
+				headOp := 1.0 - t.cfg.Easing.apply(float64(headAge)/float64(dur))
+				if headOp > 0.6 {
+					headOp = 0.6 + 0.4*(headOp-0.6)/0.4 // boost to full near peak
+					if headOp > 1.0 {
+						headOp = 1.0
+					}
+				}
+				// Full braille block (all 8 dots) for the ball.
+				out = append(out, Ghost{X: ballX, Line: ballY, Opacity: headOp, BrailleMask: 0xFF})
+			}
+		}
+	}
+
 	return out
 }
 
