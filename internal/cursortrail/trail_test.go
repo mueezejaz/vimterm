@@ -254,10 +254,11 @@ func TestTrailJumpFromRestSweepsPath(t *testing.T) {
 		t.Fatalf("origin ghost = %+v, want (2,5)", ghosts)
 	}
 
-	// 110ms in, cells 3..9 are born; the head cell 10 arrives at 116ms.
+	// 110ms in, cells 3..9 are born; the head cell 10 arrives at 116ms. The
+	// head ball rides the band's leading edge (inside cell 9 at +110ms).
 	ghosts = trail.Ghosts(t0.Add(time.Second).Add(110 * time.Millisecond))
-	if len(ghosts) != 8 {
-		t.Fatalf("expected departure + 7 band cells at +110ms, got %d: %+v", len(ghosts), ghosts)
+	if len(ghosts) != 9 {
+		t.Fatalf("expected departure + 7 band cells + head ball at +110ms, got %d: %+v", len(ghosts), ghosts)
 	}
 	if ghosts[0].X != 2 || ghosts[0].Mask != 0 {
 		t.Fatalf("oldest ghost = %+v, want the departed origin (2,5) full-cell", ghosts[0])
@@ -276,10 +277,11 @@ func TestTrailJumpFromRestSweepsPath(t *testing.T) {
 		t.Fatalf("band head opacity %v should exceed tail %v", ghosts[7].Opacity, ghosts[1].Opacity)
 	}
 
-	// At +130ms the head cell joins, covering only the half toward the band.
+	// At +130ms the head cell joins, covering only the half toward the band,
+	// and the head ball parks on the cursor cell (paint skips it there).
 	ghosts = trail.Ghosts(t0.Add(time.Second).Add(130 * time.Millisecond))
-	if len(ghosts) != 9 {
-		t.Fatalf("expected departure + 8 band cells at +130ms, got %d", len(ghosts))
+	if len(ghosts) != 10 {
+		t.Fatalf("expected departure + 8 band cells + head ball at +130ms, got %d", len(ghosts))
 	}
 	if got := coveredSet(ghosts)[[2]int{10, 5}]; got == 0 {
 		t.Fatalf("head cell (10,5) coverage %d, want nonzero toward the band", got)
@@ -296,10 +298,11 @@ func TestTrailVerticalSweepCoversPath(t *testing.T) {
 	trail.Record(3, 40, t0.Add(time.Second))
 
 	// 30-line jump: departure + lines 11..39 full-width + line 40 capped at
-	// its upper half. All births land inside the 120ms window.
+	// its upper half + the head ball parked on the cursor. All births land
+	// inside the 120ms window.
 	ghosts := trail.Ghosts(t0.Add(time.Second).Add(120 * time.Millisecond))
-	if len(ghosts) != 31 {
-		t.Fatalf("expected departure + 30 band cells, got %d: %+v", len(ghosts), ghosts)
+	if len(ghosts) != 32 {
+		t.Fatalf("expected departure + 30 band cells + head ball, got %d: %+v", len(ghosts), ghosts)
 	}
 	if ghosts[0].Line != 10 {
 		t.Fatalf("oldest ghost line=%d, want 10 (origin)", ghosts[0].Line)
@@ -326,18 +329,20 @@ func TestTrailLongJumpStaysGapless(t *testing.T) {
 	})
 	t0 := time.Unix(1700000000, 0)
 
-	// 200-line jump: departure + lines 101..300.
+	// 200-line jump: departure + lines 101..300 + the head ball on the
+	// cursor (same line as the last band cell, so it's excluded below).
 	trail.Record(0, 100, t0)
 	trail.Record(0, 300, t0.Add(time.Second))
 
 	ghosts := trail.Ghosts(t0.Add(time.Second).Add(500 * time.Millisecond))
-	if len(ghosts) != 201 {
-		t.Fatalf("expected departure + 200 band cells, got %d", len(ghosts))
+	if len(ghosts) != 202 {
+		t.Fatalf("expected departure + 200 band cells + head ball, got %d", len(ghosts))
 	}
 	if ghosts[0].Line != 100 {
 		t.Fatalf("oldest ghost line=%d, want 100 (origin)", ghosts[0].Line)
 	}
-	for i, g := range ghosts[1:] {
+	band := ghosts[1 : len(ghosts)-1]
+	for i, g := range band {
 		if want := 101 + i; g.Line != want {
 			t.Fatalf("band cell %d line=%d, want %d (streak must be gapless)", i, g.Line, want)
 		}
@@ -449,6 +454,131 @@ func TestTrailSweepShallowDiagonalConnected(t *testing.T) {
 	assertBandConnected(t, covered, [2]int{0, 0})
 }
 
+// TestTrailSweepHeadBallTravels verifies the staggered sweep rides a solid
+// head ball along the path: the last ghost sits at the eased head position,
+// advances monotonically toward the cursor, stays brighter than the band
+// behind it, and parks on the cursor once the sweep window ends.
+func TestTrailSweepHeadBallTravels(t *testing.T) {
+	trail := testTrail()
+	t0 := time.Unix(1700000000, 0)
+
+	// (0,0) → (8,2): sweep window 120ms, linear easing, so the head rides
+	// the segment at fraction elapsed/120ms. Dot-space start is (0.5,1) and
+	// end (8.5,5); the ball's cell is the floor of its dot position (y
+	// halved). Sample points avoid cell boundaries.
+	trail.Record(0, 0, t0)
+	trail.Record(8, 2, t0.Add(time.Second))
+
+	cases := []struct {
+		elapsed      time.Duration
+		wantX, wantY int
+	}{
+		{36 * time.Millisecond, 2, 1}, // head dot (2.9, 2.2)
+		{72 * time.Millisecond, 5, 1}, // head dot (5.3, 3.4)
+		{96 * time.Millisecond, 6, 2}, // head dot (6.9, 4.2)
+	}
+	prevX := -1
+	for _, tc := range cases {
+		ghosts := trail.Ghosts(t0.Add(time.Second).Add(tc.elapsed))
+		if len(ghosts) == 0 {
+			t.Fatalf("no ghosts at +%v", tc.elapsed)
+		}
+		ball := ghosts[len(ghosts)-1]
+		if ball.X != tc.wantX || ball.Line != tc.wantY {
+			t.Fatalf("head ball at +%v = (%d,%d), want (%d,%d)",
+				tc.elapsed, ball.X, ball.Line, tc.wantX, tc.wantY)
+		}
+		if ball.BrailleMask != 0xFF {
+			t.Fatalf("head ball mask = %#x at +%v, want full 0xFF", ball.BrailleMask, tc.elapsed)
+		}
+		if ball.Opacity <= 1.0 {
+			t.Fatalf("head ball opacity %v at +%v, want the leading-edge boost (>1)", ball.Opacity, tc.elapsed)
+		}
+		if ball.X <= prevX {
+			t.Fatalf("head ball not advancing: x=%d after x=%d", ball.X, prevX)
+		}
+		prevX = ball.X
+	}
+
+	// After the sweep window the ball rests on the cursor cell (where paint
+	// skips it behind the live cursor).
+	ghosts := trail.Ghosts(t0.Add(time.Second).Add(150 * time.Millisecond))
+	ball := ghosts[len(ghosts)-1]
+	if ball.X != 8 || ball.Line != 2 {
+		t.Fatalf("head ball after the window = (%d,%d), want the cursor (8,2)", ball.X, ball.Line)
+	}
+}
+
+// segmentIntersectsCell reports whether the dot-space segment crosses the
+// given cell's rectangle (shrunk by an epsilon so exact corner-touches don't
+// count). Standard slab test.
+func segmentIntersectsCell(px, py, qx, qy float64, cx, cy int) bool {
+	const eps = 1e-9
+	x0, x1 := float64(cx)+eps, float64(cx+1)-eps
+	y0, y1 := float64(2*cy)+eps, float64(2*cy+2)-eps
+	dx, dy := qx-px, qy-py
+	t0, t1 := 0.0, 1.0
+	for _, slab := range [...][4]float64{{dx, px, x0, x1}, {dy, py, y0, y1}} {
+		d, p, lo, hi := slab[0], slab[1], slab[2], slab[3]
+		if math.Abs(d) < 1e-12 {
+			if p < lo || p > hi {
+				return false
+			}
+			continue
+		}
+		ta := (lo - p) / d
+		tb := (hi - p) / d
+		if ta > tb {
+			ta, tb = tb, ta
+		}
+		if ta > t0 {
+			t0 = ta
+		}
+		if tb < t1 {
+			t1 = tb
+		}
+		if t0 > t1 {
+			return false
+		}
+	}
+	return true
+}
+
+// TestTrailSweepCoversEveryCrossedCell verifies the band covers every cell
+// the centerline passes through once fully born. The old quantized pixel
+// walk dropped corner-clipped cells on diagonals, leaving ragged edges; an
+// exact grid walk must not.
+func TestTrailSweepCoversEveryCrossedCell(t *testing.T) {
+	for _, end := range [][2]int{{8, 2}, {7, 3}, {5, 5}, {12, 4}, {3, 9}, {10, 1}} {
+		trail := testTrail()
+		t0 := time.Unix(1700000000, 0)
+		trail.Record(0, 0, t0)
+		trail.Record(end[0], end[1], t0.Add(time.Second))
+
+		ghosts := trail.Ghosts(t0.Add(time.Second).Add(150 * time.Millisecond))
+		covered := coveredSet(ghosts)
+
+		px, py := 0.5, 1.0
+		qx, qy := float64(end[0])+0.5, float64(end[1])*2+1.0
+		minX, maxX := min(0, end[0]), max(0, end[0])
+		minY, maxY := min(0, end[1]), max(0, end[1])
+		for cy := minY; cy <= maxY; cy++ {
+			for cx := minX; cx <= maxX; cx++ {
+				if cx == 0 && cy == 0 {
+					continue // the origin is the departure ghost's cell
+				}
+				if !segmentIntersectsCell(px, py, qx, qy, cx, cy) {
+					continue
+				}
+				if _, ok := covered[[2]int{cx, cy}]; !ok {
+					t.Fatalf("sweep (0,0)→(%d,%d): centerline cell (%d,%d) is not covered — hole in the band",
+						end[0], end[1], cx, cy)
+				}
+			}
+		}
+	}
+}
+
 // TestTrailPrunesExpired verifies the buffer does not grow without bound:
 // once entries expire they are dropped, so steady-state recording keeps the
 // buffer near its initial capacity.
@@ -521,10 +651,11 @@ func TestTrailSweepEasedStagger(t *testing.T) {
 		t.Fatalf("ease_in comet starts slow: expected only the origin at +20ms, got %d ghosts", got)
 	}
 	// By +105ms cells 1..3 are born (births 52ms, 79ms, 99.5ms); the head
-	// cell 4 waits for ~108ms.
+	// cell 4 waits for ~108ms. The head ball rides the band edge inside
+	// cell 3, for one extra ghost.
 	ghosts := trail.Ghosts(t0.Add(time.Second).Add(105 * time.Millisecond))
-	if len(ghosts) != 4 {
-		t.Fatalf("expected origin + 3 band cells by +105ms, got %d", len(ghosts))
+	if len(ghosts) != 5 {
+		t.Fatalf("expected origin + 3 band cells + head ball by +105ms, got %d", len(ghosts))
 	}
 }
 
@@ -542,9 +673,10 @@ func TestTrailFastMotionFillsPath(t *testing.T) {
 	trail.Record(6, 0, t0.Add(66*time.Millisecond))
 
 	ghosts := trail.Ghosts(t0.Add(80 * time.Millisecond))
-	// 2 departures + 3 cells per band (interior full, head capped).
-	if len(ghosts) != 8 {
-		t.Fatalf("expected 8 ghosts covering both 3-cell moves, got %d: %+v", len(ghosts), ghosts)
+	// 2 departures + 3 cells per band (interior full, head capped), each
+	// sweep adding its head ball on the destination cell.
+	if len(ghosts) != 10 {
+		t.Fatalf("expected 10 ghosts covering both 3-cell moves, got %d: %+v", len(ghosts), ghosts)
 	}
 	covered := coveredSet(ghosts)
 	for x := 0; x < 6; x++ {
@@ -572,9 +704,10 @@ func TestTrailBurstMoveFillsGap(t *testing.T) {
 
 	ghosts := trail.Ghosts(t0.Add(33 * time.Millisecond))
 	// Departure + the cell in between (full) + the head capped at its right
-	// half (flat cut at the live cursor's center).
-	if len(ghosts) != 3 {
-		t.Fatalf("expected departure + 2 band cells, got %d: %+v", len(ghosts), ghosts)
+	// half (flat cut at the live cursor's center) + the head ball, which
+	// parks on the live cursor cell at headS=1.
+	if len(ghosts) != 4 {
+		t.Fatalf("expected departure + 2 band cells + head ball, got %d: %+v", len(ghosts), ghosts)
 	}
 	covered := coveredSet(ghosts)
 	if got := covered[[2]int{9, 5}]; got == 0 {
@@ -601,9 +734,10 @@ func TestTrailFastLongMoveFillsPath(t *testing.T) {
 	trail.Record(20, 0, t0.Add(33*time.Millisecond))
 
 	ghosts := trail.Ghosts(t0.Add(40 * time.Millisecond))
-	// Departure + cells 1..19 full + the head capped at its left half.
-	if len(ghosts) != 21 {
-		t.Fatalf("expected departure + 20 band cells, got %d: %+v", len(ghosts), ghosts)
+	// Departure + cells 1..19 full + the head capped at its left half + the
+	// head ball parked on the live cursor cell.
+	if len(ghosts) != 22 {
+		t.Fatalf("expected departure + 20 band cells + head ball, got %d: %+v", len(ghosts), ghosts)
 	}
 	covered := coveredSet(ghosts)
 	for x := 1; x < 20; x++ {
