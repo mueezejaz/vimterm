@@ -129,6 +129,12 @@ const (
 	// keeps the comet reserved for real leaps; continuous motion fills the
 	// path instantly instead.
 	trailSweepMinDwell = 64 * time.Millisecond
+
+	// trailSweepChainWindow is how tightly a follow-up jump must trail the
+	// previous move to count as the same motion burst and extend the
+	// burst's band instead of starting a new one. Slower follow-ups (a
+	// deliberate second leap) stay separate sweeps.
+	trailSweepChainWindow = 50 * time.Millisecond
 )
 
 // Trail maintains a ring buffer of recent cursor positions. It is safe for
@@ -144,6 +150,12 @@ type Trail struct {
 	lastLine int
 	lastT    time.Time // when the current position was recorded
 	hasPos   bool
+	// Chain state for fast consecutive jumps: the anchor the burst's
+	// straight band is drawn from, extended by each follow-up jump
+	// (recordSweep). The band is re-rasterized from it every frame.
+	chainX      int
+	chainLine   int
+	chainActive bool
 }
 
 type entry struct {
@@ -197,6 +209,7 @@ func (t *Trail) Reset() {
 	t.head = 0
 	t.count = 0
 	t.hasPos = false
+	t.chainActive = false
 }
 
 // Enabled reports whether the trail is active.
@@ -220,7 +233,10 @@ func (t *Trail) Duration() time.Duration {
 // departure — so a move made after sitting still still animates. A jump of
 // two or more cells also records a sweep: the straight band between the two
 // positions is expanded into per-cell ghosts at sub-cell resolution, so
-// diagonal leaps read as one smooth motion instead of a staircase.
+// diagonal leaps read as one smooth motion instead of a staircase. Fast
+// consecutive jumps chain into a single band anchored at the burst's start
+// (recordSweep), so a diagonal burst draws one straight line rather than
+// stair-stepped per-frame segments.
 func (t *Trail) Record(x, line int, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -234,25 +250,50 @@ func (t *Trail) Record(x, line int, now time.Time) {
 		// The cursor just departed (lastX, lastLine): that position turns
 		// into a ghost whose fade starts now.
 		t.append(t.lastX, t.lastLine, now)
-		dx, dl := x-t.lastX, line-t.lastLine
-		if dx < 0 {
-			dx = -dx
-		}
-		if dl < 0 {
-			dl = -dl
-		}
-		d := dx
-		if dl > dx {
-			d = dl
-		}
-		if d >= 2 {
-			t.appendSweep(t.lastX, t.lastLine, x, line, now,
-				now.Sub(t.lastT) >= trailSweepMinDwell)
-		}
+		t.recordSweep(t.lastX, t.lastLine, x, line, now)
 	}
 	t.lastX, t.lastLine = x, line
 	t.lastT = now
 	t.hasPos = true
+}
+
+// recordSweep records the move from (x0, line0) to (x, line) as a sweep band
+// when it spans two or more cells. A follow-up jump within
+// trailSweepChainWindow that keeps moving in the burst's direction re-anchors
+// the band at the burst's start instead: the cursor's per-frame path through
+// a diagonal burst is a staircase, but the trail it leaves should be the one
+// straight line from where the motion began to where the cursor is now.
+func (t *Trail) recordSweep(x0, line0, x, line int, now time.Time) {
+	dx, dl := x-x0, line-line0
+	if dx < 0 {
+		dx = -dx
+	}
+	if dl < 0 {
+		dl = -dl
+	}
+	if max(dx, dl) < 2 {
+		return
+	}
+	stagger := now.Sub(t.lastT) >= trailSweepMinDwell
+	if !stagger && t.chainActive && now.Sub(t.lastT) <= trailSweepChainWindow && t.chainContinues(x, line) {
+		t.appendSweep(t.chainX, t.chainLine, x, line, now, false)
+		return
+	}
+	t.appendSweep(x0, line0, x, line, now, stagger)
+	t.chainX, t.chainLine = x0, line0
+	t.chainActive = true
+}
+
+// chainContinues reports whether a move to (x, line) keeps the burst
+// straight: still heading away from the anchor, with the new step roughly
+// along the chain's direction, so one straight band keeps covering the
+// motion. Direction changes (perpendicular or reversing steps) break the
+// chain rather than bend it.
+func (t *Trail) chainContinues(x, line int) bool {
+	cdx, cdl := t.lastX-t.chainX, t.lastLine-t.chainLine
+	ndx, ndl := x-t.lastX, line-t.lastLine
+	return cdx*ndx+cdl*ndl > 0 &&
+		cdx*(x-t.chainX)+cdl*(line-t.chainLine) > 0
 }
 
 // sweepWindow is how long a staggered sweep keeps spawning sub-cell ghosts

@@ -579,6 +579,70 @@ func TestTrailSweepCoversEveryCrossedCell(t *testing.T) {
 	}
 }
 
+// TestTrailDiagonalBurstChainsIntoStraightBand verifies fast consecutive
+// diagonal jumps draw ONE straight band anchored at the burst's start: it
+// covers the direct line between the endpoints — including cells the actual
+// per-frame stepped path never touched — instead of stair-stepped segments.
+func TestTrailDiagonalBurstChainsIntoStraightBand(t *testing.T) {
+	trail := testTrail()
+	t0 := time.Unix(1700000000, 0)
+
+	// Key-repeat burst: 4 right, then 4 right + 1 down, 33ms apart.
+	trail.Record(0, 0, t0)
+	trail.Record(4, 0, t0.Add(33*time.Millisecond))
+	trail.Record(8, 1, t0.Add(66*time.Millisecond))
+
+	ghosts := trail.Ghosts(t0.Add(66 * time.Millisecond))
+	covered := coveredSet(ghosts)
+
+	// The stepped path never visits (4,1); the straight band start→cursor
+	// does. Its coverage proves the burst merged into one diagonal line.
+	if _, ok := covered[[2]int{4, 1}]; !ok {
+		t.Fatalf("cell (4,1) on the chained diagonal is not covered — burst drew stair-stepped segments: %+v", covered)
+	}
+	for _, want := range [][2]int{{2, 0}, {6, 1}, {8, 1}} {
+		if _, ok := covered[want]; !ok {
+			t.Fatalf("cell (%d,%d) should be part of the chained band", want[0], want[1])
+		}
+	}
+	assertBandGeometry(t, covered, [2]int{0, 0}, 0, 0, 8, 1, 1.7, 1.0)
+	assertBandConnected(t, covered, [2]int{0, 0})
+}
+
+// TestTrailSweepChainBreaksOnPause verifies a pause past the chain window
+// starts a fresh band anchored at the new jump, not the old burst's start.
+func TestTrailSweepChainBreaksOnPause(t *testing.T) {
+	trail := testTrail()
+	t0 := time.Unix(1700000000, 0)
+
+	trail.Record(0, 0, t0)
+	trail.Record(4, 0, t0.Add(33*time.Millisecond))
+	trail.Record(8, 0, t0.Add(150*time.Millisecond)) // 117ms gap: too slow to chain
+
+	// The newest sweep must be anchored at the second jump's origin (4,0),
+	// not extended from the burst start (0,0).
+	e := trail.buf[(trail.head-1+len(trail.buf))%len(trail.buf)]
+	if !e.sweep || e.x != 4 || e.line != 0 || e.x1 != 8 {
+		t.Fatalf("newest entry = %+v, want a sweep (4,0)→(8,0) — chain should have broken", e)
+	}
+}
+
+// TestTrailSweepChainBreaksOnDirectionChange verifies a perpendicular step
+// breaks the chain instead of bending the band across the corner.
+func TestTrailSweepChainBreaksOnDirectionChange(t *testing.T) {
+	trail := testTrail()
+	t0 := time.Unix(1700000000, 0)
+
+	trail.Record(0, 0, t0)
+	trail.Record(6, 0, t0.Add(33*time.Millisecond))
+	trail.Record(6, 6, t0.Add(66*time.Millisecond)) // straight down: L-turn
+
+	e := trail.buf[(trail.head-1+len(trail.buf))%len(trail.buf)]
+	if !e.sweep || e.x != 6 || e.line != 0 || e.x1 != 6 || e.line1 != 6 {
+		t.Fatalf("newest entry = %+v, want a sweep (6,0)→(6,6) — L-turn should start a fresh band", e)
+	}
+}
+
 // TestTrailPrunesExpired verifies the buffer does not grow without bound:
 // once entries expire they are dropped, so steady-state recording keeps the
 // buffer near its initial capacity.
@@ -667,16 +731,18 @@ func TestTrailFastMotionFillsPath(t *testing.T) {
 	t0 := time.Unix(1700000000, 0)
 
 	// Key-repeat cadence: 33ms between records, 3 cells per move. Both
-	// sweeps are unstaggered, so their bands are born at once.
+	// jumps are unstaggered and land within the chain window, so they merge
+	// into one straight band anchored at the burst's start.
 	trail.Record(0, 0, t0)
 	trail.Record(3, 0, t0.Add(33*time.Millisecond))
 	trail.Record(6, 0, t0.Add(66*time.Millisecond))
 
 	ghosts := trail.Ghosts(t0.Add(80 * time.Millisecond))
-	// 2 departures + 3 cells per band (interior full, head capped), each
-	// sweep adding its head ball on the destination cell.
-	if len(ghosts) != 10 {
-		t.Fatalf("expected 10 ghosts covering both 3-cell moves, got %d: %+v", len(ghosts), ghosts)
+	// 2 departures + the first jump's 3-cell band + its head ball + the
+	// chained band (cells 1..6) + its head ball. The first band still fades
+	// beneath the chained one; the chained band overdraws it cell for cell.
+	if len(ghosts) != 13 {
+		t.Fatalf("expected 13 ghosts covering the chained 6-cell burst, got %d: %+v", len(ghosts), ghosts)
 	}
 	covered := coveredSet(ghosts)
 	for x := 0; x < 6; x++ {
