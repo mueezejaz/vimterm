@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 // Easing selects how ghosts fade and how the jump sweep travels. The names
 // describe the motion profile: ease_out starts fast and settles into the
 // cursor, ease_in starts slow and accelerates, ease_in_out does both.
@@ -346,30 +353,22 @@ func (t *Trail) Ghosts(now time.Time) []Ghost {
 	return result
 }
 
-// sweepHalfWidth is the sweep band's half-thickness in column units (rows
-// counted double, matching the on-screen cell aspect). It controls how far
-// from the centerline a braille dot can be and still be covered. Dots are
-// spaced 0.5 units apart in both directions, so half must exceed 0.5 to
-// ensure interior cells get full braille coverage while edge cells get
-// partial fringes. 1.1 bridges diagonal gaps: at a 45° screen diagonal
-// (doubled direction 1:2) the closest braille dots between consecutive
-// cells sit ~1.006 units from the centerline, just outside 1.0, while
-// cells 2 rows off the spine are at ~1.23 and stay excluded.
-const sweepHalfWidth = 1.1
+// halfWidth is the maximum distance (in doubled-y units) a braille dot can
+// be from the centerline and still be lit. Used only for bridging cells
+// that Bresenham misses.
+const halfWidth = 1.2
 
 // sweepGhosts rasterizes a jump's swept band into per-cell ghosts using
-// a DDA walk for cell identification and distance-based braille dot
-// selection for coverage. The DDA samples the centerline at fine
-// resolution (segLen*8 steps) so every cell the line passes through is
-// visited, avoiding the cell-skipping that Bresenham exhibits on
-// diagonals. For each visited cell, braille dots within the sweep band
-// (distance ≤ half from the centerline) are set, producing a thin
-// straight line with appropriate partial coverage at edges.
+// Bresenham's line algorithm at braille pixel resolution (2×4 pixels per
+// cell). Each pixel the line passes through lights its corresponding
+// braille dot, producing a thin straight trail that follows the exact
+// mathematical line rather than selecting dots by distance from the
+// centerline. This eliminates the staircase artifacts that distance-based
+// dot selection produces on diagonal lines.
 func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 	dur := t.cfg.Duration
-	half := sweepHalfWidth
 
-	// Centerline in doubled-y coordinates (matching original geometry).
+	// Centerline in doubled-y coordinates.
 	pxc, pyc := float64(e.x)+0.5, float64(e.line)*2+1
 	qxc, qyc := float64(e.x1)+0.5, float64(e.line1)*2+1
 	dxc, dyc := qxc-pxc, qyc-pyc
@@ -378,84 +377,28 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 		return nil
 	}
 
-	// DDA walk at fine resolution to identify all cells the centerline
-	// passes through. Using segLen*8 steps ensures we visit every cell
-	// even on steep or shallow diagonals.
-	segLen8 := int(math.Ceil(segLen * 8))
-	if segLen8 < 1 {
-		segLen8 = 1
-	}
-	type cellInfo struct {
-		s float64
-	}
-	cellVisit := map[[2]int]cellInfo{}
-	// ddaCells tracks the ordered sequence of unique cells visited by the
-	// DDA, preserving visitation order for diagonal bridging.
-	type ddaCell struct {
-		key [2]int
-		s   float64
-	}
-	var ddaCells []ddaCell
-	for i := 1; i <= segLen8; i++ {
-		s := float64(i) / float64(segLen8)
-		lx := pxc + dxc*s
-		ly := pyc + dyc*s
-		cellX := int(math.Floor(lx))
-		cellY := int(math.Floor(ly) / 2)
-		if cellX == e.x && cellY == e.line {
-			continue
-		}
-		if cellX < 0 || cellY < 0 {
-			continue
-		}
-		key := [2]int{cellX, cellY}
-		if _, ok := cellVisit[key]; !ok {
-			cellVisit[key] = cellInfo{s: s}
-			ddaCells = append(ddaCells, ddaCell{key: key, s: s})
-		}
+	// Bresenham walk at braille pixel resolution (2 cols × 4 rows per cell).
+	// Pixel (px,py) maps to cell (px/2, py/4), dot col=px%2, row=py%4,
+	// bit = 1 << (col*4 + row).
+	px0 := e.x*2 + 1
+	py0 := e.line*4 + 2
+	px1 := e.x1*2 + 1
+	py1 := e.line1*4 + 2
+	adx := abs(px1 - px0)
+	ady := abs(py1 - py0)
+	if adx == 0 && ady == 0 {
+		return nil
 	}
 
-	// Bridge diagonally-adjacent DDA cells. When two consecutive DDA
-	// cells differ in both x and y (diagonal step), the centerline
-	// passes through the shared corner. The two cells sharing that
-	// corner but not on the centerline must be included so the band
-	// is 4-connected (assertBandConnected uses 4-connectivity).
-	// The origin is included as the starting point so the first bridge
-	// connects the origin to the first DDA cell.
-	type bridgePt struct {
-		key [2]int
-		s   float64
+	sx, sy := 1, 1
+	if px1 < px0 {
+		sx = -1
 	}
-	bridgeSeq := make([]bridgePt, 0, len(ddaCells)+1)
-	bridgeSeq = append(bridgeSeq, bridgePt{key: [2]int{e.x, e.line}, s: 0})
-	for _, c := range ddaCells {
-		bridgeSeq = append(bridgeSeq, bridgePt{key: c.key, s: c.s})
+	if py1 < py0 {
+		sy = -1
 	}
-	for i := 1; i < len(bridgeSeq); i++ {
-		prev := bridgeSeq[i-1].key
-		curr := bridgeSeq[i].key
-		dx := curr[0] - prev[0]
-		dy := curr[1] - prev[1]
-		if dx != 0 && dy != 0 {
-			bridges := [2][2]int{{curr[0], prev[1]}, {prev[0], curr[1]}}
-			avgS := (bridgeSeq[i-1].s + bridgeSeq[i].s) / 2
-			for _, bk := range bridges {
-				if bk[0] < 0 || bk[1] < 0 {
-					continue
-				}
-				if bk == [2]int{e.x1, e.line1} {
-					continue
-				}
-				if _, ok := cellVisit[bk]; !ok {
-					cellVisit[bk] = cellInfo{s: avgS}
-				}
-			}
-		}
-	}
+	bErr := adx - ady
 
-	// For each visited cell, compute which braille dots fall within the
-	// sweep band. The band is the set of points whose distance to the
-	// centerline ≤ half.
 	type acc struct {
 		braille uint8
 		minS    float64
@@ -463,12 +406,102 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 	}
 	cells := map[[2]int]*acc{}
 
-	for key, info := range cellVisit {
+	type visit struct {
+		key [2]int
+		s   float64
+	}
+	var visits []visit
+
+	cx, cy := px0, py0
+	for i := 0; ; i++ {
+		cellX := cx / 2
+		cellY := cy / 4
+		col := cx - cellX*2
+		row := cy - cellY*4
+		if col < 0 {
+			col += 2
+			cellX--
+		}
+		if row < 0 {
+			row += 4
+			cellY--
+		}
+		bit := uint8(1 << (col*4 + row))
+
+		// Compute s from the centerline parameter using the dot position,
+		// not the cell center, so cells near the end of the line get an
+		// accurate birth time based on where the line first enters them.
+		dotX := float64(cellX) + float64(col)*0.5 + 0.25
+		dotY := float64(cellY)*2 + float64(row)*0.5 + 0.25
+		dxp := dotX - pxc
+		dyp := dotY - pyc
+		s := (dxp*dxc + dyp*dyc) / (segLen * segLen)
+		if s < 0 {
+			s = 0
+		}
+		if s > 1 {
+			s = 1
+		}
+
+		key := [2]int{cellX, cellY}
+		if key != [2]int{e.x, e.line} && cellX >= 0 && cellY >= 0 {
+			if c, ok := cells[key]; ok {
+				c.braille |= bit
+				if s < c.minS {
+					c.minS = s
+				}
+			} else {
+				cells[key] = &acc{braille: bit, minS: s}
+			}
+		}
+		visits = append(visits, visit{key: key, s: s})
+
+		if cx == px1 && cy == py1 {
+			break
+		}
+		e2 := 2 * bErr
+		if e2 > -ady {
+			bErr -= ady
+			cx += sx
+		}
+		if e2 < adx {
+			bErr += adx
+			cy += sy
+		}
+	}
+
+	// Bridge diagonally-adjacent cells for 4-connectivity. When two
+	// consecutive Bresenham cells differ in both x and y, add the two
+	// corner-sharing cells to maintain an edge-connected band.
+	for i := 1; i < len(visits); i++ {
+		prev := visits[i-1].key
+		curr := visits[i].key
+		if prev == curr {
+			continue
+		}
+		ddx := curr[0] - prev[0]
+		ddy := curr[1] - prev[1]
+		if ddx != 0 && ddy != 0 {
+			avgS := (visits[i-1].s + visits[i].s) / 2
+			for _, bk := range [2][2]int{{curr[0], prev[1]}, {prev[0], curr[1]}} {
+				if bk[0] < 0 || bk[1] < 0 || bk == [2]int{e.x1, e.line1} {
+					continue
+				}
+				if _, ok := cells[bk]; !ok {
+					cells[bk] = &acc{braille: 0, minS: avgS, minDist: halfWidth}
+				}
+			}
+		}
+	}
+
+	// Expand Bresenham dots to include all dots within halfWidth of the
+	// centerline. Bresenham at pixel resolution traces a single-pixel-wide
+	// line, but for vertical lines this only lights one column. The band
+	// width covers both columns, so all dots within halfWidth are set.
+	for key, c := range cells {
 		cellX, cellY := key[0], key[1]
-		cx := float64(cellX) + 0.5
-		cy := float64(cellY)*2 + 1
 		var dotMask uint8
-		closestDist := half
+		bestDist := halfWidth
 		for row := 0; row < 4; row++ {
 			for col := 0; col < 2; col++ {
 				dotX := float64(cellX) + float64(col)*0.5 + 0.25
@@ -485,25 +518,18 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 				onX := pxc + dxc*proj
 				onY := pyc + dyc*proj
 				dist := math.Hypot(dotX-onX, dotY-onY)
-				if dist <= half {
+				if dist <= halfWidth {
 					dotMask |= 1 << (col*4 + row)
-					if dist < closestDist {
-						closestDist = dist
+					if dist < bestDist {
+						bestDist = dist
 					}
 				}
 			}
 		}
-		if dotMask == 0 {
-			// Cell is on the path but no dots are within the band.
-			// This can happen at band edges; skip the cell.
-			continue
+		if dotMask != 0 {
+			c.braille = dotMask
+			c.minDist = bestDist
 		}
-		// Reject cells whose center projects far beyond the segment.
-		ax := (cx-pxc)*dxc + (cy-pyc)*dyc
-		if ax < -half*segLen || ax > segLen*segLen+half*segLen {
-			continue
-		}
-		cells[key] = &acc{braille: dotMask, minS: info.s, minDist: closestDist}
 	}
 
 	// Compute opacity per cell based on stagger timing.
@@ -564,8 +590,8 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 			}
 		}
 		edgeFade := 1.0
-		if a.minDist > half*0.5 {
-			edgeFade = 1.0 - 0.6*((a.minDist-half*0.5)/(half*0.5))
+		if a.minDist > halfWidth*0.5 {
+			edgeFade = 1.0 - 0.6*((a.minDist-halfWidth*0.5)/(halfWidth*0.5))
 			if edgeFade < 0.3 {
 				edgeFade = 0.3
 			}
