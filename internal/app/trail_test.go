@@ -219,15 +219,15 @@ func TestPaintTrailGhostsSweepOverText(t *testing.T) {
 
 	// Line 5 sits at viewport row 2. The band crosses 'i' at column 1 (a
 	// glyph, so the full-coverage ball shrinks to the 4-dot cluster) and
-	// the space at column 4 (full ball). Both take the dot foreground
-	// lerp(black, red, 0.5), never the tint.
-	if got := frame.Cells[2][1]; got.Content != trailBrailleGlyph(0x3C) {
-		t.Errorf("sweep over 'i' = %q, want the 4-dot cluster %q", got.Content, trailBrailleGlyph(0x3C))
+	// the space at column 4 (horizontal sweep caps to center 4 dots).
+	// Both take the dot foreground lerp(black, red, 0.5), never the tint.
+	if got := frame.Cells[2][1]; got.Content != trailBrailleGlyph(0x66) {
+		t.Errorf("sweep over 'i' = %q, want the 4-dot cluster %q", got.Content, trailBrailleGlyph(0x66))
 	} else if want := (emulator.Color{R: 128, G: 0, B: 0}); got.Fg != want {
 		t.Errorf("sweep over 'i' fg = %+v, want %+v", got.Fg, want)
 	}
-	if got := frame.Cells[2][4]; got.Content != trailBrailleGlyph(0xFF) {
-		t.Errorf("sweep over a space = %q, want full ball %q", got.Content, trailBrailleGlyph(0xFF))
+	if got := frame.Cells[2][4]; got.Content != trailBrailleGlyph(0x66) {
+		t.Errorf("sweep over a space = %q, want center dots %q", got.Content, trailBrailleGlyph(0x66))
 	} else if want := (emulator.Color{R: 128, G: 0, B: 0}); got.Fg != want {
 		t.Errorf("sweep over a space fg = %+v, want %+v", got.Fg, want)
 	}

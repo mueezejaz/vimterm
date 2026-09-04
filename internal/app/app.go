@@ -959,7 +959,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			// sweep cell the band crosses dead-center); over text shrink
 			// it to the 4-dot center cluster so the moving marker stays
 			// small instead of blotting the character out.
-			mask = 0x3C
+			mask = 0x66
 		}
 		if !a.haveTheme {
 			if mask != 0 {

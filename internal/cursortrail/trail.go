@@ -351,90 +351,142 @@ func (t *Trail) Ghosts(now time.Time) []Ghost {
 // from the centerline a braille dot can be and still be covered. Dots are
 // spaced 0.5 units apart in both directions, so half must exceed 0.5 to
 // ensure interior cells get full braille coverage while edge cells get
-// partial fringes. 1.0 gives a comfortable margin for 2×4 braille and
-// produces a smooth-looking diagonal with soft edge fading.
-const sweepHalfWidth = 1.0
+// partial fringes. 1.1 bridges diagonal gaps: at a 45° screen diagonal
+// (doubled direction 1:2) the closest braille dots between consecutive
+// cells sit ~1.006 units from the centerline, just outside 1.0, while
+// cells 2 rows off the spine are at ~1.23 and stay excluded.
+const sweepHalfWidth = 1.1
 
-// sweepGhosts rasterizes a jump's swept band into per-cell ghosts at
-// quarter-cell resolution. The band is a thin straight segment between the
-// two cursor-cell centers — thin enough that diagonals render as one line
-// of quarter-blocks instead of a fat staircase — with rows counted double
-// so the geometry matches the on-screen cell aspect. Every covered quarter
-// joins its cell's mask, and its fade starts when the eased motion reaches
-// it — the band's head chases the cursor while the tail fades at the
-// origin. The departed origin cell is skipped: the plain departure ghost
-// owns that cell.
+// sweepGhosts rasterizes a jump's swept band into per-cell ghosts using
+// a DDA walk for cell identification and distance-based braille dot
+// selection for coverage. The DDA samples the centerline at fine
+// resolution (segLen*8 steps) so every cell the line passes through is
+// visited, avoiding the cell-skipping that Bresenham exhibits on
+// diagonals. For each visited cell, braille dots within the sweep band
+// (distance ≤ half from the centerline) are set, producing a thin
+// straight line with appropriate partial coverage at edges.
 func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 	dur := t.cfg.Duration
-	// Cursor centers, rows doubled so one row = two column units.
-	px, py := float64(e.x)+0.5, float64(e.line)*2+1
-	qx, qy := float64(e.x1)+0.5, float64(e.line1)*2+1
-	dx, dy := qx-px, qy-py
-	segLen := math.Hypot(dx, dy)
-	if segLen < 1 {
-		return nil
-	}
 	half := sweepHalfWidth
 
+	// Centerline in doubled-y coordinates (matching original geometry).
+	pxc, pyc := float64(e.x)+0.5, float64(e.line)*2+1
+	qxc, qyc := float64(e.x1)+0.5, float64(e.line1)*2+1
+	dxc, dyc := qxc-pxc, qyc-pyc
+	segLen := math.Hypot(dxc, dyc)
+	if segLen < 1e-6 {
+		return nil
+	}
+
+	// DDA walk at fine resolution to identify all cells the centerline
+	// passes through. Using segLen*8 steps ensures we visit every cell
+	// even on steep or shallow diagonals.
+	segLen8 := int(math.Ceil(segLen * 8))
+	if segLen8 < 1 {
+		segLen8 = 1
+	}
+	type cellInfo struct {
+		s float64
+	}
+	cellVisit := map[[2]int]cellInfo{}
+	// ddaCells tracks the ordered sequence of unique cells visited by the
+	// DDA, preserving visitation order for diagonal bridging.
+	type ddaCell struct {
+		key [2]int
+		s   float64
+	}
+	var ddaCells []ddaCell
+	for i := 1; i <= segLen8; i++ {
+		s := float64(i) / float64(segLen8)
+		lx := pxc + dxc*s
+		ly := pyc + dyc*s
+		cellX := int(math.Floor(lx))
+		cellY := int(math.Floor(ly) / 2)
+		if cellX == e.x && cellY == e.line {
+			continue
+		}
+		if cellX < 0 || cellY < 0 {
+			continue
+		}
+		key := [2]int{cellX, cellY}
+		if _, ok := cellVisit[key]; !ok {
+			cellVisit[key] = cellInfo{s: s}
+			ddaCells = append(ddaCells, ddaCell{key: key, s: s})
+		}
+	}
+
+	// Bridge diagonally-adjacent DDA cells. When two consecutive DDA
+	// cells differ in both x and y (diagonal step), the centerline
+	// passes through the shared corner. The two cells sharing that
+	// corner but not on the centerline must be included so the band
+	// is 4-connected (assertBandConnected uses 4-connectivity).
+	// The origin is included as the starting point so the first bridge
+	// connects the origin to the first DDA cell.
+	type bridgePt struct {
+		key [2]int
+		s   float64
+	}
+	bridgeSeq := make([]bridgePt, 0, len(ddaCells)+1)
+	bridgeSeq = append(bridgeSeq, bridgePt{key: [2]int{e.x, e.line}, s: 0})
+	for _, c := range ddaCells {
+		bridgeSeq = append(bridgeSeq, bridgePt{key: c.key, s: c.s})
+	}
+	for i := 1; i < len(bridgeSeq); i++ {
+		prev := bridgeSeq[i-1].key
+		curr := bridgeSeq[i].key
+		dx := curr[0] - prev[0]
+		dy := curr[1] - prev[1]
+		if dx != 0 && dy != 0 {
+			bridges := [2][2]int{{curr[0], prev[1]}, {prev[0], curr[1]}}
+			avgS := (bridgeSeq[i-1].s + bridgeSeq[i].s) / 2
+			for _, bk := range bridges {
+				if bk[0] < 0 || bk[1] < 0 {
+					continue
+				}
+				if bk == [2]int{e.x1, e.line1} {
+					continue
+				}
+				if _, ok := cellVisit[bk]; !ok {
+					cellVisit[bk] = cellInfo{s: avgS}
+				}
+			}
+		}
+	}
+
+	// For each visited cell, compute which braille dots fall within the
+	// sweep band. The band is the set of points whose distance to the
+	// centerline ≤ half.
 	type acc struct {
 		braille uint8
-		op      float64
-		minS    float64 // minimum path parameter among contributing samples
-		minDist float64 // closest any dot in this cell got to the centerline
+		minS    float64
+		minDist float64
 	}
 	cells := map[[2]int]*acc{}
 
-	// fillCell computes which of the 8 braille dots in a cell fall within
-	// the sweep band and ORs them into the cell's accumulator. The band
-	// is the set of points whose distance to the centerline ≤ half.
-	// cellS overrides the stagger parameter; pass -1 to auto-compute
-	// from the cell center's projection (used for neighbor cells).
-	fillCell := func(cellX, cellY int, cellS float64) {
-		if cellX < 0 || cellY < 0 {
-			return
-		}
-		if cellX == e.x && cellY == e.line {
-			return
-		}
-		// Reject cells whose center projects far beyond the segment
-		// endpoints.
+	for key, info := range cellVisit {
+		cellX, cellY := key[0], key[1]
 		cx := float64(cellX) + 0.5
 		cy := float64(cellY)*2 + 1
-		ax := (cx-px)*dx + (cy-py)*dy
-		if ax < -half*segLen || ax > segLen*segLen+half*segLen {
-			return
-		}
-		if cellS < 0 {
-			cellS = ax / (segLen * segLen)
-			if cellS < 0 {
-				cellS = 0
-			}
-			if cellS > 1 {
-				cellS = 1
-			}
-		}
 		var dotMask uint8
 		closestDist := half
 		for row := 0; row < 4; row++ {
 			for col := 0; col < 2; col++ {
-				// Braille dot center in the coordinate system (rows doubled).
 				dotX := float64(cellX) + float64(col)*0.5 + 0.25
 				dotY := float64(cellY)*2 + float64(row)*0.5 + 0.25
-				// Project dot onto centerline, clamp to segment.
-				dxp := dotX - px
-				dyp := dotY - py
-				proj := (dxp*dx + dyp*dy) / (segLen * segLen)
+				dxp := dotX - pxc
+				dyp := dotY - pyc
+				proj := (dxp*dxc + dyp*dyc) / (segLen * segLen)
 				if proj < 0 {
 					proj = 0
 				}
 				if proj > 1 {
 					proj = 1
 				}
-				onX := px + dx*proj
-				onY := py + dy*proj
+				onX := pxc + dxc*proj
+				onY := pyc + dyc*proj
 				dist := math.Hypot(dotX-onX, dotY-onY)
 				if dist <= half {
-					dotMask |= 1 << (row*2 + col)
+					dotMask |= 1 << (col*4 + row)
 					if dist < closestDist {
 						closestDist = dist
 					}
@@ -442,65 +494,16 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 			}
 		}
 		if dotMask == 0 {
-			return
+			// Cell is on the path but no dots are within the band.
+			// This can happen at band edges; skip the cell.
+			continue
 		}
-		key := [2]int{cellX, cellY}
-		a := cells[key]
-		if a == nil {
-			a = &acc{minS: cellS, minDist: closestDist}
-			cells[key] = a
+		// Reject cells whose center projects far beyond the segment.
+		ax := (cx-pxc)*dxc + (cy-pyc)*dyc
+		if ax < -half*segLen || ax > segLen*segLen+half*segLen {
+			continue
 		}
-		a.braille |= dotMask
-		if cellS < a.minS {
-			a.minS = cellS
-		}
-		if closestDist < a.minDist {
-			a.minDist = closestDist
-		}
-	}
-
-	// Walk the centerline at fine intervals. At each step, determine which
-	// cell the point is in and compute which of its 8 braille dots fall
-	// within the sweep band. The DDA walk ensures every cell the line
-	// passes through is visited (no staircase gaps), and the per-dot
-	// distance check gives exact sub-cell coverage without perpendicular
-	// offset leakage into adjacent cells.
-	numSteps := int(segLen*8) + 1
-	if numSteps < 16 {
-		numSteps = 16
-	}
-	step := 1.0 / float64(numSteps)
-
-	for i := 0; i < numSteps; i++ {
-		s := float64(i) * step
-		cx := px + dx*s
-		cy := py + dy*s
-		cellX := int(math.Floor(cx))
-		cellY := int(math.Floor(cy / 2))
-		fillCell(cellX, cellY, s)
-		// On diagonals the centerline may clip a cell corner without
-		// landing inside it, leaving a connectivity gap. Check the
-		// perpendicular neighbor only when the line is diagonal enough
-		// that the centerline truly passes through adjacent cells.
-		// Neighbors use cellS=-1 (auto-computed from projection).
-		if segLen > 2 && math.Abs(dx) > 0.1 && math.Abs(dy) > 0.1 {
-			ratio := math.Abs(dx) / math.Abs(dy)
-			if ratio > 3 {
-				// Mostly horizontal: check above and below.
-				fillCell(cellX, cellY-1, -1)
-				fillCell(cellX, cellY+1, -1)
-			} else if ratio < 0.33 {
-				// Mostly vertical: check left and right.
-				fillCell(cellX-1, cellY, -1)
-				fillCell(cellX+1, cellY, -1)
-			} else {
-				// Diagonal: check all 4 orthogonal neighbors.
-				fillCell(cellX-1, cellY, -1)
-				fillCell(cellX+1, cellY, -1)
-				fillCell(cellX, cellY-1, -1)
-				fillCell(cellX, cellY+1, -1)
-			}
-		}
+		cells[key] = &acc{braille: dotMask, minS: info.s, minDist: closestDist}
 	}
 
 	// Compute opacity per cell based on stagger timing.
@@ -515,9 +518,6 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 		return keys[i][0] < keys[j][0]
 	})
 
-	// Compute the current head position along the path for the comet
-	// effect: the leading edge is bright, the tail fades behind it.
-	// headS is the path parameter [0,1] where the "ball" currently is.
 	headS := 1.0
 	if e.stagger {
 		sw := t.sweepWindow()
@@ -548,16 +548,11 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 		if op <= 0 {
 			continue
 		}
-		// Comet glow: boost opacity near the head (the "ball"), fade
-		// cells far behind it. Only applies to staggered sweeps where
-		// the head chases the cursor over time; non-staggered sweeps
-		// (fast motion) keep all cells at uniform opacity.
 		if e.stagger {
 			distBehind := headS - s
 			if distBehind < 0 {
 				distBehind = 0
 			}
-			// Staggered: strong comet — head 1.4× bright, tail 25%.
 			if distBehind < 0.15 {
 				op *= 1.0 + 0.4*(1.0-distBehind/0.15)
 			} else {
@@ -568,12 +563,6 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 				op *= fade
 			}
 		}
-		// Edge fade: cells whose closest dot is far from the centerline
-		// get their opacity reduced. This creates a soft gradient at the
-		// band edges instead of a hard on/off boundary, making diagonal
-		// trails look much smoother. Cells on the centerline (minDist≈0)
-		// keep full opacity; only cells past the inner half of the band
-		// start fading.
 		edgeFade := 1.0
 		if a.minDist > half*0.5 {
 			edgeFade = 1.0 - 0.6*((a.minDist-half*0.5)/(half*0.5))
@@ -584,19 +573,20 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 		if op <= 0 {
 			continue
 		}
-		out = append(out, Ghost{X: cellX, Line: cellY, Opacity: op * edgeFade, BrailleMask: a.braille, MinDist: a.minDist})
+		mask := a.braille
+		if math.Abs(dxc) > 3*math.Abs(dyc) {
+			mask &= 0x66
+		}
+		out = append(out, Ghost{X: cellX, Line: cellY, Opacity: op * edgeFade, BrailleMask: mask, MinDist: a.minDist})
 	}
 
-	// Head ball: add a bright, dense braille cell at the exact head
-	// position so the leading edge looks like a glowing "ball of dots".
+	// Head ball
 	if len(out) > 0 {
-		hx := px + dx*headS
-		hy := py + dy*headS
-		ballX := int(math.Floor(hx))
-		ballY := int(math.Floor(hy / 2))
+		hx := float64(e.x1)*2 + 1
+		hy := float64(e.line1)*4 + 2
+		ballX := int(math.Floor(hx)) / 2
+		ballY := int(math.Floor(hy / 4))
 		if ballX >= 0 && ballY >= 0 && !(ballX == e.x && ballY == e.line) {
-			// Only add if not already a cell in the sweep (avoid
-			// overriding a sweep cell that's already bright).
 			key := [2]int{ballX, ballY}
 			if cells[key] == nil {
 				sw := t.sweepWindow()
@@ -607,13 +597,16 @@ func (t *Trail) sweepGhosts(e entry, now time.Time) []Ghost {
 				}
 				headOp := 1.0 - t.cfg.Easing.apply(float64(headAge)/float64(dur))
 				if headOp > 0.6 {
-					headOp = 0.6 + 0.4*(headOp-0.6)/0.4 // boost to full near peak
+					headOp = 0.6 + 0.4*(headOp-0.6)/0.4
 					if headOp > 1.0 {
 						headOp = 1.0
 					}
 				}
-				// Full braille block (all 8 dots) for the ball.
-				out = append(out, Ghost{X: ballX, Line: ballY, Opacity: headOp, BrailleMask: 0xFF})
+				ballMask := uint8(0xFF)
+				if math.Abs(dxc) > 3*math.Abs(dyc) {
+					ballMask = 0x66
+				}
+				out = append(out, Ghost{X: ballX, Line: ballY, Opacity: headOp, BrailleMask: ballMask})
 			}
 		}
 	}
