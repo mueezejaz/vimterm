@@ -934,7 +934,11 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 		// characters.
 		if isPlain && cellHasGlyph(cell.Content) {
 			if !a.haveTheme {
-				cell.Reverse = true
+				if trailColor != (emulator.Color{}) {
+					cell.Fg = lerpColor(cell.Fg, baseFg, op)
+				} else {
+					cell.Reverse = true
+				}
 				continue
 			}
 			// Resolve against the real theme foreground (not the trail
@@ -967,7 +971,11 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			} else if g.Mask != 0 {
 				cell.Content = trailBlockGlyph(g.Mask)
 			}
-			cell.Reverse = true
+			if trailColor != (emulator.Color{}) {
+				cell.Fg = lerpColor(emulator.Color{}, baseFg, op)
+			} else {
+				cell.Reverse = true
+			}
 			continue
 		}
 		if g.Mask != 0 && g.BrailleMask == 0 {
