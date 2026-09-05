@@ -497,6 +497,16 @@ func (a *App) trailGlow() float64 {
 	return 0.0
 }
 
+// themeColors returns the host terminal's default foreground/background and
+// whether theme colors are available. The values are read through cfgMu to
+// follow the config-guarding convention, even though they are currently
+// set once before the main loop starts.
+func (a *App) themeColors() (fg, bg emulator.Color, have bool) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.themeFg, a.themeBg, a.haveTheme
+}
+
 // customCommand returns the key sequence bound to a custom colon-command.
 func (a *App) customCommand(name string) ([]keybind.Key, bool) {
 	a.cfgMu.RLock()
@@ -792,11 +802,12 @@ func (a *App) renderFrame(frame *render.Frame) {
 			top := a.topAbsLine()
 			if a.cur.Line >= top && a.cur.Line <= top+rows-1 {
 				cell := &frame.Cells[a.cur.Line-top][a.cur.Col]
-				if a.haveTheme {
+				themeFg, themeBg, haveTheme := a.themeColors()
+				if haveTheme {
 					// A solid block in the cell's inverted rendered colors: on a
 					// highlighted cell the cursor lands on the opposite color
 					// pair of the highlight instead of blending into it.
-					cell.Fg, cell.Bg = cursorBlockStyle(*cell, a.themeFg, a.themeBg)
+					cell.Fg, cell.Bg = cursorBlockStyle(*cell, themeFg, themeBg)
 					cell.Reverse = false
 					cell.Bold = true
 				} else {
@@ -893,6 +904,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 	maxOp := a.trailOpacity()
 	trailColor := a.trailColor()
 	glow := a.trailGlow()
+	themeFg, themeBg, haveTheme := a.themeColors()
 	// glowWhite is the glow target: blend toward white for the glow effect.
 	glowWhite := emulator.Color{R: 255, G: 255, B: 255}
 	for _, g := range ghosts {
@@ -914,7 +926,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 		}
 		// Resolve the base trail foreground color: user-configured
 		// color takes priority, then theme foreground.
-		baseFg := a.themeFg
+		baseFg := themeFg
 		zero := emulator.Color{}
 		if trailColor != zero {
 			baseFg = trailColor
@@ -933,7 +945,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 		// expire quickly, so they read as motion rather than missing
 		// characters.
 		if isPlain && cellHasGlyph(cell.Content) {
-			if !a.haveTheme {
+			if !haveTheme {
 				if trailColor != (emulator.Color{}) {
 					cell.Fg = lerpColor(cell.Fg, baseFg, op)
 				} else {
@@ -944,7 +956,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			// Resolve against the real theme foreground (not the trail
 			// color, or default-fg letters would already be the tint
 			// target and never fade), then tint toward the trail color.
-			fg, bg := resolvedGhostColors(*cell, a.themeFg, a.themeBg)
+			fg, bg := resolvedGhostColors(*cell, themeFg, themeBg)
 			cell.Fg = lerpColor(fg, baseFg, op)
 			if cell.Reverse {
 				cell.Bg = bg
@@ -965,7 +977,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			// small instead of blotting the character out.
 			mask = 0x66
 		}
-		if !a.haveTheme {
+		if !haveTheme {
 			if mask != 0 {
 				cell.Content = trailBrailleGlyph(mask)
 			} else if g.Mask != 0 {
@@ -984,7 +996,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			if cell.Width != 1 {
 				continue
 			}
-			fg, bg := resolvedGhostColors(*cell, baseFg, a.themeBg)
+			fg, bg := resolvedGhostColors(*cell, baseFg, themeBg)
 			*cell = emulator.Cell{
 				Content:   trailBlockGlyph(g.Mask),
 				Width:     1,
@@ -1008,7 +1020,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 		*cell = emulator.Cell{
 			Content:   trailBrailleGlyph(mask),
 			Width:     1,
-			Fg:        lerpColor(a.themeBg, baseFg, op),
+			Fg:        lerpColor(themeBg, baseFg, op),
 			Bg:        cell.Bg,
 			Bold:      cell.Bold,
 			Faint:     cell.Faint,
