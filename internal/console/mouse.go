@@ -31,7 +31,6 @@ const (
 	mouseMoved   = 0x0001
 	mouseDouble  = 0x0002
 	mouseWheeled = 0x0004
-	mouseHWheel  = 0x0008
 )
 
 // MOUSE_EVENT_RECORD button states.

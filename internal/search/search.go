@@ -3,7 +3,6 @@
 package search
 
 import (
-	"strings"
 	"unicode"
 
 	"vimterm/internal/emulator"
@@ -198,10 +197,6 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int) {
 	}
 }
 
-func lower(r []rune) []rune {
-	return lowerInto(nil, r)
-}
-
 func lowerInto(dst, src []rune) []rune {
 	dst = dst[:0]
 	for _, x := range src {
@@ -220,12 +215,6 @@ func equalRunes(a, b []rune) bool {
 		}
 	}
 	return true
-}
-
-// toLower is kept for callers that need a single rune; it delegates to the
-// standard library for correct Unicode case folding.
-func toLower(r rune) rune {
-	return unicode.ToLower(r)
 }
 
 // index returns the index of needle in haystack, or -1.
@@ -248,13 +237,4 @@ func indexFrom(haystack, needle []rune, from int) int {
 		return from + idx
 	}
 	return -1
-}
-
-// LineText renders a cell row as plain text, trimming trailing spaces.
-func LineText(cells []emulator.Cell) string {
-	var sb strings.Builder
-	for _, c := range cells {
-		sb.WriteString(c.Content)
-	}
-	return strings.TrimRight(sb.String(), " ")
 }

@@ -448,22 +448,6 @@ func (a *App) rowIsFullWidth(absLine int) bool {
 	return last.Content != "" && last.Content != " "
 }
 
-// rowIsBlank reports whether every cell on the absolute buffer line is empty
-// or contains only a space.  This distinguishes blank output rows from short
-// command lines that still contain text.
-func (a *App) rowIsBlank(absLine int) bool {
-	cells := a.bufferLineCells(absLine)
-	if cells == nil {
-		return true
-	}
-	for _, c := range cells {
-		if c.Content != "" && c.Content != " " {
-			return false
-		}
-	}
-	return true
-}
-
 // cursorBlockStyle returns the colors the virtual cursor block should use
 // over the given cell: the cell's rendered colors (Reverse applied, Default
 // resolved to the theme colors) inverted. Inverting the rendered colors

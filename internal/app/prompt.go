@@ -6,8 +6,7 @@ import "vimterm/internal/keybind"
 type promptKind int
 
 const (
-	promptNone promptKind = iota
-	promptSearch
+	promptSearch promptKind = iota
 	promptCommand
 	promptTabs
 )
