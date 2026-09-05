@@ -1107,6 +1107,9 @@ func (a *App) cleanup() {
 		if a.con != nil {
 			a.con.Close()
 		}
+		if trailLog != nil {
+			trailLog.Close()
+		}
 	})
 }
 
