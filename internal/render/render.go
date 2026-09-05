@@ -134,9 +134,9 @@ func (r *Renderer) Draw(w io.Writer, f *Frame) {
 			cy = f.Rows
 		}
 		sb.WriteString("\x1b[")
-		sb.WriteString(itoa(cy))
+		sb.WriteString(Itoa(cy))
 		sb.WriteByte(';')
-		sb.WriteString(itoa(cx))
+		sb.WriteString(Itoa(cx))
 		sb.WriteByte('H')
 		sb.WriteString(escShowCursor)
 	}
@@ -172,9 +172,9 @@ func drawRow(sb *strings.Builder, row, old []emulator.Cell, oldDrawn bool, y, fr
 	}
 
 	sb.WriteString("\x1b[")
-	sb.WriteString(itoa(y + 1))
+	sb.WriteString(Itoa(y + 1))
 	sb.WriteByte(';')
-	sb.WriteString(itoa(from + 1))
+	sb.WriteString(Itoa(from + 1))
 	sb.WriteByte('H')
 
 	var prevStyle style
@@ -308,11 +308,11 @@ func writeStyle(sb *strings.Builder, st style) {
 	}
 	writeRGB := func(prefix string, c emulator.Color) {
 		writeCode(prefix)
-		sb.WriteString(itoa(int(c.R)))
+		sb.WriteString(Itoa(int(c.R)))
 		sb.WriteByte(';')
-		sb.WriteString(itoa(int(c.G)))
+		sb.WriteString(Itoa(int(c.G)))
 		sb.WriteByte(';')
-		sb.WriteString(itoa(int(c.B)))
+		sb.WriteString(Itoa(int(c.B)))
 	}
 	if st.attrs&attrBold != 0 {
 		writeCode("1")
@@ -349,7 +349,9 @@ func writeStyle(sb *strings.Builder, st style) {
 	}
 }
 
-func itoa(n int) string {
+// Itoa converts a non-negative integer to its decimal string representation.
+// Negative values are clamped to 0.
+func Itoa(n int) string {
 	if n <= 0 {
 		return "0"
 	}

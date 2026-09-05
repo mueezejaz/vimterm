@@ -124,8 +124,8 @@ func TestNewFrameDefaultsAreUnset(t *testing.T) {
 func TestItoa(t *testing.T) {
 	cases := map[int]string{0: "0", 1: "1", 9: "9", 10: "10", 100: "100", 1000: "1000"}
 	for n, want := range cases {
-		if got := itoa(n); got != want {
-			t.Errorf("itoa(%d) = %q, want %q", n, got, want)
+		if got := Itoa(n); got != want {
+			t.Errorf("Itoa(%d) = %q, want %q", n, got, want)
 		}
 	}
 }

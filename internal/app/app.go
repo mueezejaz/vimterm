@@ -743,7 +743,7 @@ func (a *App) renderFrame(frame *render.Frame) {
 	var sbRowLine int = -1
 
 	for y := 0; y < rows; y++ {
-		absLine := bufBottom - offset - (rows - 1 - y)
+		absLine := viewportRowToAbsLine(y, bufBottom, offset, rows)
 		for x := 0; x < cols; x++ {
 			var c emulator.Cell
 			switch {
@@ -773,7 +773,7 @@ func (a *App) renderFrame(frame *render.Frame) {
 	// Search highlight: mark matches on the visible lines.
 	if len(a.search.Query()) > 0 {
 		for y := 0; y < rows; y++ {
-			absLine := bufBottom - offset - (rows - 1 - y)
+			absLine := viewportRowToAbsLine(y, bufBottom, offset, rows)
 			a.search.Highlight(frame.Cells[y], absLine)
 		}
 	}
@@ -781,7 +781,7 @@ func (a *App) renderFrame(frame *render.Frame) {
 	// Visual selection: reverse the selected cells.
 	if a.sel.Active {
 		for y := 0; y < rows; y++ {
-			absLine := bufBottom - offset - (rows - 1 - y)
+			absLine := viewportRowToAbsLine(y, bufBottom, offset, rows)
 			for x := 0; x < cols; x++ {
 				if a.sel.Contains(selection.Pos{Line: absLine, Col: x}) {
 					frame.Cells[y][x].Reverse = true
@@ -956,7 +956,7 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			// Resolve against the real theme foreground (not the trail
 			// color, or default-fg letters would already be the tint
 			// target and never fade), then tint toward the trail color.
-			fg, bg := resolvedGhostColors(*cell, themeFg, themeBg)
+			fg, bg := resolveCellColors(*cell, themeFg, themeBg)
 			cell.Fg = lerpColor(fg, baseFg, op)
 			if cell.Reverse {
 				cell.Bg = bg
@@ -996,20 +996,8 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			if cell.Width != 1 {
 				continue
 			}
-			fg, bg := resolvedGhostColors(*cell, baseFg, themeBg)
-			*cell = emulator.Cell{
-				Content:   trailBlockGlyph(g.Mask),
-				Width:     1,
-				Fg:        lerpColor(bg, fg, op),
-				Bg:        bg,
-				Bold:      cell.Bold,
-				Faint:     cell.Faint,
-				Italic:    cell.Italic,
-				Blink:     cell.Blink,
-				Underline: cell.Underline,
-				Strike:    cell.Strike,
-				Conceal:   cell.Conceal,
-			}
+			fg, bg := resolveCellColors(*cell, baseFg, themeBg)
+			*cell = withGhostStyle(*cell, trailBlockGlyph(g.Mask), lerpColor(bg, fg, op), bg)
 			continue
 		}
 		if cell.Width != 1 {
@@ -1017,19 +1005,31 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 		}
 		// Braille dots take the ghost foreground; the cell background
 		// stays intact, matching sweep trails.
-		*cell = emulator.Cell{
-			Content:   trailBrailleGlyph(mask),
-			Width:     1,
-			Fg:        lerpColor(themeBg, baseFg, op),
-			Bg:        cell.Bg,
-			Bold:      cell.Bold,
-			Faint:     cell.Faint,
-			Italic:    cell.Italic,
-			Blink:     cell.Blink,
-			Underline: cell.Underline,
-			Strike:    cell.Strike,
-			Conceal:   cell.Conceal,
-		}
+		*cell = withGhostStyle(*cell, trailBrailleGlyph(mask), lerpColor(themeBg, baseFg, op), cell.Bg)
+	}
+}
+
+// viewportRowToAbsLine converts a viewport row index (0-based from top) to an
+// absolute buffer line number (scrollback + screen).
+func viewportRowToAbsLine(y, bufBottom, offset, rows int) int {
+	return bufBottom - offset - (rows - 1 - y)
+}
+
+// withGhostStyle creates a new Cell with the given content and colors while
+// preserving the original cell's text attributes (Bold, Italic, etc.).
+func withGhostStyle(orig emulator.Cell, content string, fg, bg emulator.Color) emulator.Cell {
+	return emulator.Cell{
+		Content:   content,
+		Width:     1,
+		Fg:        fg,
+		Bg:        bg,
+		Bold:      orig.Bold,
+		Faint:     orig.Faint,
+		Italic:    orig.Italic,
+		Blink:     orig.Blink,
+		Underline: orig.Underline,
+		Strike:    orig.Strike,
+		Conceal:   orig.Conceal,
 	}
 }
 

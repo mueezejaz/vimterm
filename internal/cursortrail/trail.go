@@ -326,19 +326,20 @@ func (t *Trail) reserve(at time.Time) {
 	}
 }
 
-func (t *Trail) append(x, line int, at time.Time) {
-	t.reserve(at)
-	t.buf[t.head] = entry{x: x, line: line, t: at}
+func (t *Trail) appendEntry(e entry) {
+	t.reserve(e.t)
+	t.buf[t.head] = e
 	t.head = (t.head + 1) % len(t.buf)
 	t.count++
 }
 
+func (t *Trail) append(x, line int, at time.Time) {
+	t.appendEntry(entry{x: x, line: line, t: at})
+}
+
 func (t *Trail) appendSweep(x0, line0, x1, line1 int, at time.Time, stagger bool) {
-	t.reserve(at)
-	t.buf[t.head] = entry{x: x0, line: line0, x1: x1, line1: line1, t: at,
-		sweep: true, stagger: stagger}
-	t.head = (t.head + 1) % len(t.buf)
-	t.count++
+	t.appendEntry(entry{x: x0, line: line0, x1: x1, line1: line1, t: at,
+		sweep: true, stagger: stagger})
 }
 
 // grow re-linearizes the ring into a larger buffer, preserving entry order.

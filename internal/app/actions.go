@@ -448,32 +448,9 @@ func (a *App) rowIsFullWidth(absLine int) bool {
 	return last.Content != "" && last.Content != " "
 }
 
-// cursorBlockStyle returns the colors the virtual cursor block should use
-// over the given cell: the cell's rendered colors (Reverse applied, Default
-// resolved to the theme colors) inverted. Inverting the rendered colors
-// instead of just setting Reverse keeps the cursor visible when the cell is
-// already highlighted (search matches and selections are drawn with Reverse).
-// Defaults are resolved before swapping so the default background attribute
-// becomes the default background color even when reverse puts it in the
-// foreground slot.
-func cursorBlockStyle(cell emulator.Cell, themeFg, themeBg emulator.Color) (fg, bg emulator.Color) {
-	fg, bg = cell.Fg, cell.Bg
-	zero := emulator.Color{}
-	if fg == zero || fg.Default {
-		fg = themeFg
-	}
-	if bg == zero || bg.Default {
-		bg = themeBg
-	}
-	if cell.Reverse {
-		fg, bg = bg, fg
-	}
-	return bg, fg
-}
-
-// resolvedGhostColors returns a cell's effective foreground/background:
+// resolveCellColors returns a cell's effective foreground/background:
 // Default colors fall back to the theme and Reverse swaps the pair.
-func resolvedGhostColors(cell emulator.Cell, themeFg, themeBg emulator.Color) (fg, bg emulator.Color) {
+func resolveCellColors(cell emulator.Cell, themeFg, themeBg emulator.Color) (fg, bg emulator.Color) {
 	fg, bg = cell.Fg, cell.Bg
 	zero := emulator.Color{}
 	if fg == zero || fg.Default {
@@ -486,6 +463,16 @@ func resolvedGhostColors(cell emulator.Cell, themeFg, themeBg emulator.Color) (f
 		fg, bg = bg, fg
 	}
 	return fg, bg
+}
+
+// cursorBlockStyle returns the colors the virtual cursor block should use
+// over the given cell: the cell's rendered colors inverted. Inverting the
+// rendered colors instead of just setting Reverse keeps the cursor visible
+// when the cell is already highlighted (search matches and selections are
+// drawn with Reverse).
+func cursorBlockStyle(cell emulator.Cell, themeFg, themeBg emulator.Color) (fg, bg emulator.Color) {
+	fg, bg = resolveCellColors(cell, themeFg, themeBg)
+	return bg, fg
 }
 
 // trailBlockGlyph maps a 2x2 sub-cell coverage mask (bit0 upper-left, bit1

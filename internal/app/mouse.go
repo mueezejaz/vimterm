@@ -107,7 +107,7 @@ func (a *App) mousePos(x, y int) selection.Pos {
 		rows = a.screenRows
 	}
 	bufBottom := a.emu.ScrollbackLen() + a.emu.Height() - 1
-	abs := bufBottom - a.vp.Offset() - (rows - 1 - y)
+	abs := viewportRowToAbsLine(y, bufBottom, a.vp.Offset(), rows)
 	if abs < 0 {
 		abs = 0
 	}

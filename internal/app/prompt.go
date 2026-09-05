@@ -1,6 +1,9 @@
 package app
 
-import "vimterm/internal/keybind"
+import (
+	"vimterm/internal/keybind"
+	"vimterm/internal/render"
+)
 
 // promptKind identifies what a transient bottom-line input is for.
 type promptKind int
@@ -136,7 +139,7 @@ func (a *App) commitPrompt() {
 			return
 		}
 		if n := len(a.search.Matches()); n > 0 {
-			a.setStatusMsg("search: " + q + "  (" + itoa(n) + " matches)")
+			a.setStatusMsg("search: " + q + "  (" + render.Itoa(n) + " matches)")
 		} else {
 			a.setStatusMsg("search: no match for " + q)
 		}
@@ -162,16 +165,4 @@ func (a *App) cancelPrompt() {
 	a.dirty.Store(true)
 }
 
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
-}
+func itoa(n int) string { return render.Itoa(n) }
