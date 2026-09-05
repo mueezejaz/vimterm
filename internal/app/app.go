@@ -855,16 +855,16 @@ func (a *App) updateTrail(frame *render.Frame, rows int, now time.Time) {
 		a.trail.Record(cx, top+cy, now)
 		// Debug: log trail state
 		if trailLog != nil {
-			fmt.Fprintf(trailLog, "record(shell) col=%d line=%d ghosts=%d enabled=%v dur=%v\n",
-				cx, top+cy, len(a.trail.Ghosts(now)), a.trail.Enabled(), a.trail.Duration())
+			fmt.Fprintf(trailLog, "record(shell) col=%d line=%d enabled=%v dur=%v\n",
+				cx, top+cy, a.trail.Enabled(), a.trail.Duration())
 		}
 		a.paintTrailGhosts(frame, rows, now, cx, top+cy)
 	} else if a.curValid {
 		a.trail.Record(a.cur.Col, a.cur.Line, now)
 		// Debug: log trail state
 		if trailLog != nil {
-			fmt.Fprintf(trailLog, "record col=%d line=%d ghosts=%d enabled=%v dur=%v\n",
-				a.cur.Col, a.cur.Line, len(a.trail.Ghosts(now)), a.trail.Enabled(), a.trail.Duration())
+			fmt.Fprintf(trailLog, "record col=%d line=%d enabled=%v dur=%v\n",
+				a.cur.Col, a.cur.Line, a.trail.Enabled(), a.trail.Duration())
 		}
 		a.paintTrailGhosts(frame, rows, now, a.cur.Col, a.cur.Line)
 	}
