@@ -350,7 +350,7 @@ func writeStyle(sb *strings.Builder, st style) {
 }
 
 func itoa(n int) string {
-	if n == 0 {
+	if n <= 0 {
 		return "0"
 	}
 	var buf [20]byte
