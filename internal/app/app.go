@@ -986,10 +986,17 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 			}
 			fg, bg := resolvedGhostColors(*cell, baseFg, a.themeBg)
 			*cell = emulator.Cell{
-				Content: trailBlockGlyph(g.Mask),
-				Width:   1,
-				Fg:      lerpColor(bg, fg, op),
-				Bg:      bg,
+				Content:   trailBlockGlyph(g.Mask),
+				Width:     1,
+				Fg:        lerpColor(bg, fg, op),
+				Bg:        bg,
+				Bold:      cell.Bold,
+				Faint:     cell.Faint,
+				Italic:    cell.Italic,
+				Blink:     cell.Blink,
+				Underline: cell.Underline,
+				Strike:    cell.Strike,
+				Conceal:   cell.Conceal,
 			}
 			continue
 		}
@@ -999,10 +1006,17 @@ func (a *App) paintTrailGhosts(frame *render.Frame, rows int, now time.Time, ski
 		// Braille dots take the ghost foreground; the cell background
 		// stays intact, matching sweep trails.
 		*cell = emulator.Cell{
-			Content: trailBrailleGlyph(mask),
-			Width:   1,
-			Fg:      lerpColor(a.themeBg, baseFg, op),
-			Bg:      cell.Bg,
+			Content:   trailBrailleGlyph(mask),
+			Width:     1,
+			Fg:        lerpColor(a.themeBg, baseFg, op),
+			Bg:        cell.Bg,
+			Bold:      cell.Bold,
+			Faint:     cell.Faint,
+			Italic:    cell.Italic,
+			Blink:     cell.Blink,
+			Underline: cell.Underline,
+			Strike:    cell.Strike,
+			Conceal:   cell.Conceal,
 		}
 	}
 }
