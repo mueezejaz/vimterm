@@ -91,3 +91,54 @@ func TestMouseDoubleClickOnSpaceFallsBackToClick(t *testing.T) {
 		t.Fatalf("cursor = %d, want 3 (plain click)", a.cur.Col)
 	}
 }
+
+func TestMouseDragSelectionSurvivesVTRelease(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "hello world\r\n")
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 1, Y: 0, Down: true})
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 4, Y: 0, Drag: true})
+	if !a.sel.Active {
+		t.Fatal("precondition: drag must create a selection")
+	}
+	a.handleMouse(console.MouseEvent{Button: console.MouseNone, X: 4, Y: 0})
+	if !a.sel.Active {
+		t.Fatal("VT-mode mouse release cancelled the drag selection")
+	}
+}
+
+func TestMouseDragSelectionSurvivesLegacyRelease(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "hello world\r\n")
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 1, Y: 0, Down: true})
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 4, Y: 0, Drag: true})
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 4, Y: 0})
+	if !a.sel.Active {
+		t.Fatal("legacy-style release cancelled the selection")
+	}
+}
+
+func TestMouseSelectionTextAfterDragRelease(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "hello world\r\n")
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 0, Y: 0, Down: true})
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 4, Y: 0, Drag: true})
+	a.handleMouse(console.MouseEvent{Button: console.MouseNone, X: 4, Y: 0})
+	if !a.sel.Active {
+		t.Fatal("selection not active after drag+release")
+	}
+	got := a.sel.Text(a.bufferLineRow)
+	if got != "hello" {
+		t.Fatalf("selection text after drag+release got %q, want %q", got, "hello")
+	}
+}
+
+func TestMouseVTDoubleClickSelectsWord(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "foo bar baz\r\n")
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 5, Y: 0, Down: true})
+	a.handleMouse(console.MouseEvent{Button: console.MouseLeft, X: 5, Y: 0, Down: true})
+	if !a.sel.Active {
+		t.Fatal("VT-mode double click did not select the word")
+	}
+	s := a.sel.Start()
+	e := a.sel.End()
+	if s.Col != 4 || e.Col != 6 {
+		t.Fatalf("word selection %d..%d, want 4..6", s.Col, e.Col)
+	}
+}

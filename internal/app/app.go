@@ -74,7 +74,8 @@ type App struct {
 	clipWrite func(string) error
 
 	// mouseAnchor is where a mouse drag began (from the preceding click).
-	mouseAnchor selection.Pos
+	mouseAnchor    selection.Pos
+	lastClickTime  time.Time // time of the last single click, for VT double-click detection
 
 	// Status line colors from config.
 	statusFg emulator.Color

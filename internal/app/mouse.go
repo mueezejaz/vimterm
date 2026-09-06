@@ -70,12 +70,17 @@ func (a *App) handleMouse(e console.MouseEvent) {
 			a.mouseDrag(pos)
 		}
 	case e.Down:
-		a.mouseClick(pos)
-	default:
-		if e.Button == console.MouseNone {
-			a.sel.Cancel()
-			a.dirty.Store(true)
+		// VT/SGR mode doesn't set the Double flag; detect rapid same-cell
+		// clicks as a double-click to select the word under the pointer.
+		if !e.Double && pos == a.mouseAnchor && time.Since(a.lastClickTime) < 500*time.Millisecond {
+			a.mouseWordSelect(pos)
+		} else {
+			a.mouseClick(pos)
 		}
+	default:
+		// A VT/SGR release produces Button=MouseNone with no Down/Drag flag;
+		// keep the existing selection so drag+yank works end to end.
+		a.dirty.Store(true)
 	}
 }
 
@@ -147,6 +152,7 @@ func (a *App) mouseClick(pos selection.Pos) {
 	}
 	a.sel.Cancel()
 	a.mouseAnchor = pos
+	a.lastClickTime = time.Now()
 	a.cur = pos
 	a.curValid = true
 	a.clampCursor()
