@@ -51,6 +51,7 @@ clean = "leader+c"
 [keybindings.normal]
 "leader+c" = "scroll_up"
 "ctrl+y" = "scroll_down"
+"$" = "move_line_end"
 ```
 
 ### `[general]`
@@ -114,7 +115,7 @@ Available actions:
 | action | action |
 |---|---|
 | `move_left` `move_down` `move_up` `move_right` | `goto_top` `goto_bottom` |
-| `scroll_up` `scroll_down` | `enter_insert` `enter_insert_after` `enter_insert_end` `enter_insert_home` `enter_normal` |
+| `move_line_end` | `scroll_up` `scroll_down` | `enter_insert` `enter_insert_after` `enter_insert_end` `enter_insert_home` `enter_normal` |
 | `search_forward` `search_next` `search_prev` | `command_prompt` `rename_prompt` |
 | `enter_visual` `enter_visual_line` `cancel_visual` | `yank` `paste` `paste_before` |
 | `yank_line` `delete_word` `delete_word_back` | `record_macro` `play_macro` `repeat_last` |
@@ -123,4 +124,4 @@ Available actions:
 
 ### Default bindings
 
-Normal mode mirrors Vim: `h/j/k/l` and arrows move, `gg`/`G` jump, `ctrl+u`/`ctrl+d` scroll, `i`/`a`/`A`/`I` enter insert, `/` searches (`n`/`N` next/prev), `:` opens the command prompt, `v`/`V` visual, `y`/`p`/`P` yank/paste, `yy` yanks the whole line (with a count, several lines), `dw`/`db` delete (and cut) the word forward/backward, `q`/`@` record/play macro, `.` repeats the last command, `f`/`F`/`t`/`T`/`;`/`,` find, `w`/`b`/`e` and `W`/`B`/`E` word motions, `gt`/`gT` switch tabs, `leader+nt` opens a new tab and asks for its name, `leader+tt` opens the tab switcher popup, `ctrl+q` quits. Insert mode binds only `esc` and `ctrl+q`; everything else types through to the shell.
+Normal mode mirrors Vim: `h/j/k/l` and arrows move, `gg`/`G` jump, `$` goes to end of line, `ctrl+u`/`ctrl+d` scroll, `i`/`a`/`A`/`I` enter insert, `/` searches (`n`/`N` next/prev), `:` opens the command prompt, `v`/`V` visual, `y`/`p`/`P` yank/paste, `yy` yanks the whole line (with a count, several lines), `dw`/`db` delete (and cut) the word forward/backward, `q`/`@` record/play macro, `.` repeats the last command, `f`/`F`/`t`/`T`/`;`/`,` find, `w`/`b`/`e` and `W`/`B`/`E` word motions, `gt`/`gT` switch tabs, `leader+nt` opens a new tab and asks for its name, `leader+tt` opens the tab switcher popup, `ctrl+q` quits. Insert mode binds only `esc` and `ctrl+q`; everything else types through to the shell.

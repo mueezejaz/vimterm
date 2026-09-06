@@ -9,6 +9,7 @@ const (
 	ActionMoveRight        Action = "move_right"
 	ActionMoveUp           Action = "move_up"
 	ActionMoveDown         Action = "move_down"
+	ActionMoveLineEnd      Action = "move_line_end"
 	ActionScrollUp         Action = "scroll_up"
 	ActionScrollDown       Action = "scroll_down"
 	ActionGotoTop          Action = "goto_top"
@@ -62,6 +63,7 @@ var AllActions = []Action{
 	ActionMoveRight,
 	ActionMoveUp,
 	ActionMoveDown,
+	ActionMoveLineEnd,
 	ActionScrollUp,
 	ActionScrollDown,
 	ActionGotoTop,

@@ -250,3 +250,41 @@ func TestMotionIgnoresInsertMode(t *testing.T) {
 		t.Fatalf("motion in insert changed cur: %d -> %d", line, a.cur.Line)
 	}
 }
+
+func TestMotionLineEnd(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "hello world\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	// Cursor starts at col 0; $ should jump to the last non-blank ('d' at col 10).
+	press(t, a, keybind.NewRune('$', keybind.ModShift))
+	if a.cur.Col != 10 {
+		t.Fatalf("$: cur.Col = %d, want 10", a.cur.Col)
+	}
+}
+
+func TestMotionLineEndBlankLine(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "\r\nhello\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	// First line is blank; $ should leave cursor at col 0.
+	press(t, a, keybind.NewRune('$', keybind.ModShift))
+	if a.cur.Col != 0 {
+		t.Fatalf("$ on blank: cur.Col = %d, want 0", a.cur.Col)
+	}
+}
+
+func TestMotionLineEndFromMiddle(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "hello world\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	// Move to col 5 (the space), then $ should still go to col 10.
+	press(t, a, keybind.NewRune('l', 0))
+	press(t, a, keybind.NewRune('l', 0))
+	press(t, a, keybind.NewRune('l', 0))
+	press(t, a, keybind.NewRune('l', 0))
+	press(t, a, keybind.NewRune('l', 0))
+	press(t, a, keybind.NewRune('$', keybind.ModShift))
+	if a.cur.Col != 10 {
+		t.Fatalf("$ from middle: cur.Col = %d, want 10", a.cur.Col)
+	}
+}

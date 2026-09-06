@@ -17,6 +17,7 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionMoveRight:        func() { a.moveCursor(0, a.takeCount()) },
 		keybind.ActionMoveUp:           func() { a.moveCursor(-a.takeCount(), 0) },
 		keybind.ActionMoveDown:         func() { a.moveCursor(a.takeCount(), 0) },
+		keybind.ActionMoveLineEnd:      a.moveLineEnd,
 		keybind.ActionScrollUp:         func() { a.countScroll(-1) },
 		keybind.ActionScrollDown:       func() { a.countScroll(1) },
 		keybind.ActionGotoTop:          func() { a.countGoto(true) },
@@ -297,6 +298,33 @@ func (a *App) jumpCursorLine(line int) {
 	a.syncCursor()
 	a.cur.Line = line
 	a.cur.Col = 0
+	a.clampCursor()
+	a.ensureCursorVisible()
+	a.afterCursorMove()
+}
+
+// moveLineEnd moves the cursor to the last non-blank character on the
+// current line ($). When the line is entirely blank the cursor lands on
+// column 0.
+func (a *App) moveLineEnd() {
+	a.syncCursor()
+	cells := a.bufferLineCells(a.cur.Line)
+	if cells == nil {
+		return
+	}
+	width := a.emu.Width()
+	lastCol := 0
+	for col := width - 1; col >= 0; col-- {
+		c := cells[col]
+		if c.Width == 0 {
+			continue // continuation cell of a wide character
+		}
+		if c.Content != "" && c.Content != " " {
+			lastCol = col
+			break
+		}
+	}
+	a.cur.Col = lastCol
 	a.clampCursor()
 	a.ensureCursorVisible()
 	a.afterCursorMove()
