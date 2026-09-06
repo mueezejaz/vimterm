@@ -112,6 +112,21 @@ func TestStatusLineNarrowWithMessageNoPanic(t *testing.T) {
 	}
 }
 
+func TestStatusLineNarrowRowLeftTextPreserved(t *testing.T) {
+	fg := emulator.Color{R: 1, G: 2, B: 3}
+	bg := emulator.Color{R: 4, G: 5, B: 6}
+	row := make([]emulator.Cell, 12)
+	statusLine(row, mode.ModeNormal, "msg msg m", "pwsh", 0, 0, fg, bg, nil, 0)
+	var sb strings.Builder
+	for _, c := range row {
+		sb.WriteString(c.Content)
+	}
+	got := sb.String()
+	if !strings.HasPrefix(got, " NORMAL msg ") {
+		t.Fatalf("right text overwrote left text on a full row: %q", got)
+	}
+}
+
 func TestTerminalRows(t *testing.T) {
 	cases := map[int]int{0: 1, 1: 1, 2: 1, 24: 23, 30: 29}
 	for in, want := range cases {

@@ -55,8 +55,8 @@ func statusLine(row []emulator.Cell, m mode.Mode, msg, shell string, cx, cy int,
 	if rightStart < 0 {
 		rightStart = 0
 	}
-	if leftLen := len(leftRunes); leftLen < len(row) && rightStart < leftLen {
-		rightStart = leftLen
+	if rightStart < len(leftRunes) {
+		rightStart = len(leftRunes)
 	}
 	for i, r := range rightRunes {
 		col := rightStart + i
