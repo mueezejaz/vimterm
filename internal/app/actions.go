@@ -18,6 +18,7 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionMoveUp:           func() { a.moveCursor(-a.takeCount(), 0) },
 		keybind.ActionMoveDown:         func() { a.moveCursor(a.takeCount(), 0) },
 		keybind.ActionMoveLineEnd:      a.moveLineEnd,
+		keybind.ActionMoveLineBeg:      a.moveLineBeg,
 		keybind.ActionScrollUp:         func() { a.countScroll(-1) },
 		keybind.ActionScrollDown:       func() { a.countScroll(1) },
 		keybind.ActionGotoTop:          func() { a.countGoto(true) },
@@ -325,6 +326,32 @@ func (a *App) moveLineEnd() {
 		}
 	}
 	a.cur.Col = lastCol
+	a.clampCursor()
+	a.ensureCursorVisible()
+	a.afterCursorMove()
+}
+
+// moveLineBeg moves the cursor to the first non-blank character on the
+// current line (^). When the line is entirely blank the cursor lands on
+// column 0.
+func (a *App) moveLineBeg() {
+	a.syncCursor()
+	cells := a.bufferLineCells(a.cur.Line)
+	if cells == nil {
+		return
+	}
+	firstCol := 0
+	for col := 0; col < len(cells); col++ {
+		c := cells[col]
+		if c.Width == 0 {
+			continue // continuation cell of a wide character
+		}
+		if c.Content != "" && c.Content != " " {
+			firstCol = col
+			break
+		}
+	}
+	a.cur.Col = firstCol
 	a.clampCursor()
 	a.ensureCursorVisible()
 	a.afterCursorMove()

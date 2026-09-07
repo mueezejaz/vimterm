@@ -288,3 +288,37 @@ func TestMotionLineEndFromMiddle(t *testing.T) {
 		t.Fatalf("$ from middle: cur.Col = %d, want 10", a.cur.Col)
 	}
 }
+
+func TestMotionLineBeg(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "hello world\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	// Move to end, then ^ should jump back to col 0.
+	press(t, a, keybind.NewRune('$', keybind.ModShift))
+	press(t, a, keybind.NewRune('^', keybind.ModShift))
+	if a.cur.Col != 0 {
+		t.Fatalf("^: cur.Col = %d, want 0", a.cur.Col)
+	}
+}
+
+func TestMotionLineBegBlankLine(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "\r\nhello\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	// First line is blank; ^ should leave cursor at col 0.
+	press(t, a, keybind.NewRune('^', keybind.ModShift))
+	if a.cur.Col != 0 {
+		t.Fatalf("^ on blank: cur.Col = %d, want 0", a.cur.Col)
+	}
+}
+
+func TestMotionLineBegIndented(t *testing.T) {
+	a := newMotionApp(t, 40, 5, "  hello\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	// ^ should land on first non-blank at col 2.
+	press(t, a, keybind.NewRune('^', keybind.ModShift))
+	if a.cur.Col != 2 {
+		t.Fatalf("^ indented: cur.Col = %d, want 2", a.cur.Col)
+	}
+}

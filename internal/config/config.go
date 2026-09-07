@@ -215,6 +215,7 @@ func defaultNormalBindings() map[string]Binding {
 		"ctrl+q":    {"quit"},
 		"ctrl+w":    {"close_tab"},
 		"$":         {"move_line_end"},
+		"^":         {"move_line_beg"},
 	}
 }
 
@@ -261,6 +262,7 @@ func defaultVisualBindings() map[string]Binding {
 		"esc":    {"enter_normal"},
 		"ctrl+q": {"quit"},
 		"$":      {"move_line_end"},
+		"^":      {"move_line_beg"},
 	}
 }
 
