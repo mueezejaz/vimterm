@@ -377,13 +377,25 @@ func Load(path string) (*Config, error) {
 		cfg.Colors.StatusBg = *probe.Colors.StatusBg
 	}
 	if probe.Keybindings.Normal != nil && len(*probe.Keybindings.Normal) > 0 {
-		cfg.Keybindings.Normal = *probe.Keybindings.Normal
+		merged := defaultNormalBindings()
+		for k, v := range *probe.Keybindings.Normal {
+			merged[k] = v
+		}
+		cfg.Keybindings.Normal = merged
 	}
 	if probe.Keybindings.Insert != nil && len(*probe.Keybindings.Insert) > 0 {
-		cfg.Keybindings.Insert = *probe.Keybindings.Insert
+		merged := defaultInsertBindings()
+		for k, v := range *probe.Keybindings.Insert {
+			merged[k] = v
+		}
+		cfg.Keybindings.Insert = merged
 	}
 	if probe.Keybindings.Visual != nil && len(*probe.Keybindings.Visual) > 0 {
-		cfg.Keybindings.Visual = *probe.Keybindings.Visual
+		merged := defaultVisualBindings()
+		for k, v := range *probe.Keybindings.Visual {
+			merged[k] = v
+		}
+		cfg.Keybindings.Visual = merged
 	}
 	if probe.Commands != nil {
 		cfg.Commands = *probe.Commands

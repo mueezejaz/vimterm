@@ -42,6 +42,38 @@ timeoutlen = 500
 	}
 }
 
+func TestLoadPartialKeybindingOverridePreservesDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	content := `[keybindings.normal]
+"h" = "quit"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The overridden key must take effect.
+	if cfg.Keybindings.Normal["h"] == nil || cfg.Keybindings.Normal["h"][0] != "quit" {
+		t.Errorf("normal h = %q, want quit", cfg.Keybindings.Normal["h"])
+	}
+	// All other default bindings must survive.
+	for _, tc := range []struct{ key, want string }{
+		{"j", "move_down"},
+		{"k", "move_up"},
+		{"l", "move_right"},
+		{"gg", "goto_top"},
+		{"ctrl+u", "scroll_up"},
+		{"i", "enter_insert"},
+	} {
+		if cfg.Keybindings.Normal[tc.key] == nil || cfg.Keybindings.Normal[tc.key][0] != tc.want {
+			t.Errorf("default normal %s lost after partial override, got %v", tc.key, cfg.Keybindings.Normal[tc.key])
+		}
+	}
+}
+
 func TestLoadChainBinding(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
