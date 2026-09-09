@@ -380,7 +380,7 @@ func Load(path string) (*Config, error) {
 		merged := defaultNormalBindings()
 		for k, v := range *probe.Keybindings.Normal {
 			if len(v) == 1 && v[0] == "" {
-				merged[k] = Binding{"noop"}
+				delete(merged, k)
 			} else {
 				merged[k] = v
 			}
@@ -391,7 +391,7 @@ func Load(path string) (*Config, error) {
 		merged := defaultInsertBindings()
 		for k, v := range *probe.Keybindings.Insert {
 			if len(v) == 1 && v[0] == "" {
-				merged[k] = Binding{"noop"}
+				delete(merged, k)
 			} else {
 				merged[k] = v
 			}
@@ -402,7 +402,7 @@ func Load(path string) (*Config, error) {
 		merged := defaultVisualBindings()
 		for k, v := range *probe.Keybindings.Visual {
 			if len(v) == 1 && v[0] == "" {
-				merged[k] = Binding{"noop"}
+				delete(merged, k)
 			} else {
 				merged[k] = v
 			}

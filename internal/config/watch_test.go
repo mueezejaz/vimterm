@@ -91,8 +91,8 @@ func TestLoadExplicitUnbindingRemovesDefault(t *testing.T) {
 	if cfg.Keybindings.Insert["ctrl+k"] == nil || cfg.Keybindings.Insert["ctrl+k"][0] != "enter_normal" {
 		t.Errorf("ctrl+k = %q, want enter_normal", cfg.Keybindings.Insert["ctrl+k"])
 	}
-	if cfg.Keybindings.Insert["esc"] == nil || cfg.Keybindings.Insert["esc"][0] != "noop" {
-		t.Errorf("esc should be noop, got %v", cfg.Keybindings.Insert["esc"])
+	if _, ok := cfg.Keybindings.Insert["esc"]; ok {
+		t.Errorf("esc should be removed (empty string = unbind), got %v", cfg.Keybindings.Insert["esc"])
 	}
 	if cfg.Keybindings.Insert["ctrl+q"] == nil || cfg.Keybindings.Insert["ctrl+q"][0] != "quit" {
 		t.Errorf("default insert ctrl+q lost, got %v", cfg.Keybindings.Insert["ctrl+q"])
@@ -112,8 +112,8 @@ func TestLoadEmptyStringOverrideAbsorbsKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Keybindings.Insert["esc"] == nil || cfg.Keybindings.Insert["esc"][0] != "noop" {
-		t.Errorf("esc should be noop, got %v", cfg.Keybindings.Insert["esc"])
+	if _, ok := cfg.Keybindings.Insert["esc"]; ok {
+		t.Errorf("esc should be removed (empty string = unbind), got %v", cfg.Keybindings.Insert["esc"])
 	}
 	if cfg.Keybindings.Insert["ctrl+q"] == nil || cfg.Keybindings.Insert["ctrl+q"][0] != "quit" {
 		t.Errorf("default insert ctrl+q lost, got %v", cfg.Keybindings.Insert["ctrl+q"])
