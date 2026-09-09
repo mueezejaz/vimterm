@@ -49,6 +49,7 @@ const (
 	ActionDeleteWord       Action = "delete_word"
 	ActionDeleteWordBack   Action = "delete_word_back"
 	ActionYankLine         Action = "yank_line"
+	ActionNoop             Action = "noop"
 	ActionQuit             Action = "quit"
 	ActionNextTab          Action = "next_tab"
 	ActionPrevTab          Action = "prev_tab"
@@ -104,6 +105,7 @@ var AllActions = []Action{
 	ActionDeleteWord,
 	ActionDeleteWordBack,
 	ActionYankLine,
+	ActionNoop,
 	ActionQuit,
 	ActionNextTab,
 	ActionPrevTab,

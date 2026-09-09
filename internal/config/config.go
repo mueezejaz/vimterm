@@ -379,11 +379,10 @@ func Load(path string) (*Config, error) {
 	if probe.Keybindings.Normal != nil && len(*probe.Keybindings.Normal) > 0 {
 		merged := defaultNormalBindings()
 		for k, v := range *probe.Keybindings.Normal {
-			merged[k] = v
-		}
-		for k, v := range merged {
 			if len(v) == 1 && v[0] == "" {
-				delete(merged, k)
+				merged[k] = Binding{"noop"}
+			} else {
+				merged[k] = v
 			}
 		}
 		cfg.Keybindings.Normal = merged
@@ -391,11 +390,10 @@ func Load(path string) (*Config, error) {
 	if probe.Keybindings.Insert != nil && len(*probe.Keybindings.Insert) > 0 {
 		merged := defaultInsertBindings()
 		for k, v := range *probe.Keybindings.Insert {
-			merged[k] = v
-		}
-		for k, v := range merged {
 			if len(v) == 1 && v[0] == "" {
-				delete(merged, k)
+				merged[k] = Binding{"noop"}
+			} else {
+				merged[k] = v
 			}
 		}
 		cfg.Keybindings.Insert = merged
@@ -403,11 +401,10 @@ func Load(path string) (*Config, error) {
 	if probe.Keybindings.Visual != nil && len(*probe.Keybindings.Visual) > 0 {
 		merged := defaultVisualBindings()
 		for k, v := range *probe.Keybindings.Visual {
-			merged[k] = v
-		}
-		for k, v := range merged {
 			if len(v) == 1 && v[0] == "" {
-				delete(merged, k)
+				merged[k] = Binding{"noop"}
+			} else {
+				merged[k] = v
 			}
 		}
 		cfg.Keybindings.Visual = merged

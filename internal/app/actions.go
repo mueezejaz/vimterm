@@ -57,6 +57,7 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionDeleteWord:       func() { a.deleteWord(1) },
 		keybind.ActionDeleteWordBack:   func() { a.deleteWord(-1) },
 		keybind.ActionYankLine:         a.yankLine,
+		keybind.ActionNoop:             func() {},
 		keybind.ActionQuit:             a.requestQuit,
 		keybind.ActionNextTab:          func() { a.countTab(1) },
 		keybind.ActionPrevTab:          func() { a.countTab(-1) },
