@@ -79,7 +79,6 @@ func TestLoadExplicitUnbindingRemovesDefault(t *testing.T) {
 	path := filepath.Join(dir, "config.toml")
 	content := `[keybindings.insert]
 "ctrl+k" = "enter_normal"
-"esc" = ""
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -91,8 +90,29 @@ func TestLoadExplicitUnbindingRemovesDefault(t *testing.T) {
 	if cfg.Keybindings.Insert["ctrl+k"] == nil || cfg.Keybindings.Insert["ctrl+k"][0] != "enter_normal" {
 		t.Errorf("ctrl+k = %q, want enter_normal", cfg.Keybindings.Insert["ctrl+k"])
 	}
+	if _, ok := cfg.Keybindings.Insert["esc"]; ok {
+		t.Errorf("default esc (enter_normal) should be removed when ctrl+k takes over, got %v", cfg.Keybindings.Insert["esc"])
+	}
+	if cfg.Keybindings.Insert["ctrl+q"] == nil || cfg.Keybindings.Insert["ctrl+q"][0] != "quit" {
+		t.Errorf("default insert ctrl+q lost, got %v", cfg.Keybindings.Insert["ctrl+q"])
+	}
+}
+
+func TestLoadEmptyStringOverrideAbsorbsKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	content := `[keybindings.insert]
+"esc" = ""
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cfg.Keybindings.Insert["esc"] == nil || cfg.Keybindings.Insert["esc"][0] != "noop" {
-		t.Errorf("esc should be noop after empty-string override, got %v", cfg.Keybindings.Insert["esc"])
+		t.Errorf("esc should be noop, got %v", cfg.Keybindings.Insert["esc"])
 	}
 	if cfg.Keybindings.Insert["ctrl+q"] == nil || cfg.Keybindings.Insert["ctrl+q"][0] != "quit" {
 		t.Errorf("default insert ctrl+q lost, got %v", cfg.Keybindings.Insert["ctrl+q"])
