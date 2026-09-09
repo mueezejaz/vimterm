@@ -74,6 +74,31 @@ func TestLoadPartialKeybindingOverridePreservesDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadExplicitUnbindingRemovesDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	content := `[keybindings.insert]
+"ctrl+k" = "enter_normal"
+"esc" = ""
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Keybindings.Insert["ctrl+k"] == nil || cfg.Keybindings.Insert["ctrl+k"][0] != "enter_normal" {
+		t.Errorf("ctrl+k = %q, want enter_normal", cfg.Keybindings.Insert["ctrl+k"])
+	}
+	if _, ok := cfg.Keybindings.Insert["esc"]; ok {
+		t.Errorf("esc should have been unbound but got %v", cfg.Keybindings.Insert["esc"])
+	}
+	if cfg.Keybindings.Insert["ctrl+q"] == nil || cfg.Keybindings.Insert["ctrl+q"][0] != "quit" {
+		t.Errorf("default insert ctrl+q lost, got %v", cfg.Keybindings.Insert["ctrl+q"])
+	}
+}
+
 func TestLoadChainBinding(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
