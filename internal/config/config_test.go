@@ -148,3 +148,20 @@ func TestLoadEmptyShellFallsBack(t *testing.T) {
 		t.Errorf("shell = %q, want fallback powershell.exe", cfg.General.Shell)
 	}
 }
+
+func TestEnsureDefaultIsValidTOML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vimterm", "config.toml")
+	if err := EnsureDefault(path); err != nil {
+		t.Fatal(err)
+	}
+	// EnsureDefault writes the default TOML constant to disk.
+	// Load must succeed on the file it wrote.
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load on EnsureDefault output failed: %v\n(defaultToml has a TOML syntax error)", err)
+	}
+	if cfg == nil {
+		t.Fatal("cfg is nil")
+	}
+}

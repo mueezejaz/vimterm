@@ -667,7 +667,7 @@ status_bg = ""
 "i" = "enter_insert"
 "esc" = "enter_normal"
 "ctrl+q" = "quit"
-"$" = "move_line_end" (smear) effect: shows fading ghost cursors at recent positions.
+"$" = "move_line_end"
 # Disabled by default; enable and tune to your taste.
 # [cursor_trail]
 # enabled = true
