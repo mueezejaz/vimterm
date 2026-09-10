@@ -82,11 +82,12 @@ type vtEmulator struct {
 	mu             sync.RWMutex
 	term           *vt.SafeEmulator
 	mouseModeCount atomic.Int32 // number of active mouse tracking modes
+	mouseEnabled   map[ansi.DECMode]bool
 }
 
 // New creates a terminal emulator with the given grid size.
 func New(cols, rows int) Emulator {
-	return &vtEmulator{term: vt.NewSafeEmulator(cols, rows)}
+	return &vtEmulator{term: vt.NewSafeEmulator(cols, rows), mouseEnabled: make(map[ansi.DECMode]bool)}
 }
 
 func (e *vtEmulator) Write(p []byte) (int, error) {
@@ -260,7 +261,8 @@ func (e *vtEmulator) SetCallbacks(cb vt.Callbacks) {
 	origDisable := cb.DisableMode
 	cb.EnableMode = func(mode ansi.Mode) {
 		for _, m := range mouseTrackingModes {
-			if mode == m {
+			if mode == m && !e.mouseEnabled[m] {
+				e.mouseEnabled[m] = true
 				e.mouseModeCount.Add(1)
 				break
 			}
@@ -271,10 +273,9 @@ func (e *vtEmulator) SetCallbacks(cb vt.Callbacks) {
 	}
 	cb.DisableMode = func(mode ansi.Mode) {
 		for _, m := range mouseTrackingModes {
-			if mode == m {
-				if n := e.mouseModeCount.Load(); n > 0 {
-					e.mouseModeCount.Add(-1)
-				}
+			if mode == m && e.mouseEnabled[m] {
+				e.mouseEnabled[m] = false
+				e.mouseModeCount.Add(-1)
 				break
 			}
 		}
