@@ -118,14 +118,14 @@ func (s *Selection) Text(line Line) string {
 	var sb strings.Builder
 	first := true
 	for l := start.Line; l <= end.Line; l++ {
-		if !first {
-			sb.WriteByte('\n')
-		}
-		first = false
 		runes, cols := line(l)
 		if runes == nil {
 			continue
 		}
+		if !first {
+			sb.WriteByte('\n')
+		}
+		first = false
 		from, to := 0, len(runes)
 		if !s.LineWise {
 			if l == start.Line {

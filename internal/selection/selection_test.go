@@ -1,7 +1,6 @@
 package selection
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -138,10 +137,55 @@ func TestInactive(t *testing.T) {
 func TestTextTrailingWhitespace(t *testing.T) {
 	var s Selection
 	s.Begin(Pos{0, 0})
-	s.Move(Pos{0, len("alpha beta") - 1})
+	s.SetLineWise(true)
+	s.Move(Pos{0, 0})
 	got := s.Text(fakeLine(lines()))
-	if !strings.HasPrefix(got, "alpha beta") || strings.TrimSuffix(got, " ") == "" {
-		t.Fatalf("unexpected text %q", got)
+	if got != "alpha beta" {
+		t.Fatalf("line-wise text = %q, want %q (trailing spaces should be trimmed)", got, "alpha beta")
+	}
+}
+
+func TestTextTrailingWhitespaceNotTrimmedInCharWise(t *testing.T) {
+	wsLine := func(l int) ([]rune, []int) {
+		if l == 0 {
+			r := []rune("hello   ")
+			c := make([]int, len(r))
+			for i := range c {
+				c[i] = i
+			}
+			return r, c
+		}
+		return nil, nil
+	}
+	var s Selection
+	s.Begin(Pos{0, 0})
+	s.Move(Pos{0, 7})
+	got := s.Text(wsLine)
+	if got != "hello   " {
+		t.Fatalf("char-wise text = %q, want %q (spaces preserved)", got, "hello   ")
+	}
+}
+
+func TestTextNilLineMidSelection(t *testing.T) {
+	nilInMiddle := func(l int) ([]rune, []int) {
+		switch l {
+		case 0:
+			return []rune("abc"), []int{0, 1, 2}
+		case 1:
+			return nil, nil
+		case 2:
+			return []rune("def"), []int{0, 1, 2}
+		default:
+			return nil, nil
+		}
+	}
+	var s Selection
+	s.Begin(Pos{0, 0})
+	s.Move(Pos{2, 2})
+	got := s.Text(nilInMiddle)
+	want := "abc\ndef"
+	if got != want {
+		t.Fatalf("text = %q, want %q (nil line should be omitted, no spurious newline)", got, want)
 	}
 }
 
