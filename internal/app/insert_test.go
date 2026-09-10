@@ -39,6 +39,19 @@ func TestInsertEnd(t *testing.T) {
 	}
 }
 
+func TestInsertEndOnSpaceOnlyLine(t *testing.T) {
+	a := findApp(t, "   \r\n")
+	press(t, a, keybind.NewRune('A', keybind.ModShift))
+	if a.mods.Current() != mode.ModeInsert {
+		t.Fatal("A must enter insert mode")
+	}
+	// On an all-space line, textEnd returns -1 and the cursor goes to col 0,
+	// matching Vim's behavior where A and i are identical on blank lines.
+	if a.cur.Col != 0 {
+		t.Fatalf("A on spaces: col = %d, want 0 (same as i on blank line)", a.cur.Col)
+	}
+}
+
 func TestInsertHome(t *testing.T) {
 	a := findApp(t, "  abc\r\n")
 	press(t, a, keybind.NewRune('I', keybind.ModShift))
