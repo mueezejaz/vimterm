@@ -46,6 +46,26 @@ func TestWordEnd(t *testing.T) {
 	}
 }
 
+func TestWordEndSingleCharAtEnd(t *testing.T) {
+	// "foo a" — e from col 4 (on 'a'): single-char word at end of line.
+	// wordEnd sees 'a' at col 4, which is at end of word (next is end-of-line),
+	// so start=col+1=5, which is past the end, returning -1.
+	// This is correct Vim behavior for e on a single-char word at line end.
+	line := []rune("foo a")
+	if got := wordEnd(line, 4, wordKindWord); got != -1 {
+		t.Errorf("wordEnd single char at end: got %d, want -1", got)
+	}
+}
+
+func TestWordEndSingleCharMidLine(t *testing.T) {
+	// "a bc" — e from col 0 (on 'a'): 'a' is word end (next is space),
+	// so start=1, scan finds 'c' at col 3.
+	line := []rune("a bc")
+	if got := wordEnd(line, 0, wordKindWord); got != 3 {
+		t.Errorf("wordEnd single char mid-line: got %d, want 3", got)
+	}
+}
+
 func TestWordWORDKind(t *testing.T) {
 	line := []rune("foo.bar baz")
 	if got := wordStart(line, 0, 1, wordKindWORD); got != 8 {
@@ -114,6 +134,44 @@ func TestCountWordMotion(t *testing.T) {
 	press(t, a, keybind.NewRune('w', 0))
 	if a.cur.Col != 14 {
 		t.Fatalf("3w: col = %d, want 14", a.cur.Col)
+	}
+}
+
+func TestWordEndSingleCharWord(t *testing.T) {
+	// "a" is a single-character word; wordEnd sees that col 0 is already
+	// at the word end (it's a single char), so it advances start to col 1,
+	// which is past the line. Returns -1 (no more word ends on this line).
+	// This is correct: Vim's e from a single-char word jumps forward.
+	line := []rune("a")
+	if got := wordEnd(line, 0, wordKindWord); got != -1 {
+		t.Errorf("wordEnd single char: got %d, want -1 (correctly advances past single-char word end)", got)
+	}
+}
+
+func TestWordEndSingleCharThenMultiChar(t *testing.T) {
+	// "a bc" — e from col 0 on "a": since col 0 is word end of "a",
+	// it should advance to "bc" end at col 3.
+	line := []rune("a bc")
+	if got := wordEnd(line, 0, wordKindWord); got != 3 {
+		t.Errorf("wordEnd a then bc: got %d, want 3", got)
+	}
+}
+
+func TestWordEndOnLine(t *testing.T) {
+	a := findApp(t, "a\r\nb\r\n")
+	press(t, a, keybind.NewRune('e', 0))
+	if a.cur.Col != 0 || a.cur.Line != 0 {
+		t.Fatalf("e on single char line: line=%d col=%d, want line=0 col=0", a.cur.Line, a.cur.Col)
+	}
+}
+
+func TestWordEndOnLineCrossesToNext(t *testing.T) {
+	a := findApp(t, "a\r\nbc\r\n")
+	// e from col 0 on "a": "a" is a single-char word at end, so e moves
+	// to the next word's end on the following line.
+	press(t, a, keybind.NewRune('e', 0))
+	if a.cur.Col != 1 || a.cur.Line != 1 {
+		t.Fatalf("e: line=%d col=%d, want line=1 col=1", a.cur.Line, a.cur.Col)
 	}
 }
 

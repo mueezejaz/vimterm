@@ -322,3 +322,44 @@ func TestMotionLineBegIndented(t *testing.T) {
 		t.Fatalf("^ indented: cur.Col = %d, want 2", a.cur.Col)
 	}
 }
+
+func TestMoveCursorHLeftWrapToPrevLineEnd(t *testing.T) {
+	a := newMotionApp(t, 20, 5, "hello world\r\nfoo bar\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('j', 0)) // line 1, col 0
+	// h from col 0 of line 1: dc=-1 makes cur.Col=-1, wrapping to line 0.
+	press(t, a, keybind.NewRune('h', 0))
+	if a.cur.Line != 0 {
+		t.Fatalf("h wrap: line = %d, want 0", a.cur.Line)
+	}
+	// Should land on the last cell of line 0 (terminal-padded width).
+	if a.cur.Col != 19 {
+		t.Fatalf("h wrap: col = %d, want 19 (last cell of 20-wide terminal)", a.cur.Col)
+	}
+}
+
+func TestMoveCursorLRightWrapToNextLineStart(t *testing.T) {
+	a := newMotionApp(t, 20, 5, "hello world\r\nfoo bar\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	// l from col 0: should stay on line 0
+	press(t, a, keybind.NewRune('l', 0))
+	if a.cur.Col != 1 {
+		t.Fatalf("l: col = %d, want 1", a.cur.Col)
+	}
+}
+
+func TestMoveCursorHAtBufferStartClamps(t *testing.T) {
+	a := newMotionApp(t, 20, 5, "hello\r\n")
+	press(t, a, keybind.NewRune('g', 0))
+	press(t, a, keybind.NewRune('g', 0))
+	// h at col 0 of line 0: should clamp, not panic
+	press(t, a, keybind.NewRune('h', 0))
+	if a.cur.Col != 0 {
+		t.Fatalf("h at start: col = %d, want 0", a.cur.Col)
+	}
+	if a.cur.Line != 0 {
+		t.Fatalf("h at start: line = %d, want 0", a.cur.Line)
+	}
+}
