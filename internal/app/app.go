@@ -555,6 +555,9 @@ func (a *App) loop(ctx context.Context) error {
 			}
 			a.dirty.Store(true)
 
+		case err := <-a.con.Errc():
+			return fmt.Errorf("app: %w", err)
+
 		case <-a.quit:
 			if err := a.childError(); err != nil {
 				return fmt.Errorf("app: child read: %w", err)

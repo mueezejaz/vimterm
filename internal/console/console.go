@@ -104,6 +104,7 @@ type Console struct {
 	origCP      uint32
 	origInputCP uint32
 	events      chan Event
+	errc        chan error
 	done        chan struct{}
 	closeOnce   sync.Once
 
@@ -191,6 +192,7 @@ func Init() (*Console, error) {
 		origCP:      origCP,
 		origInputCP: origInputCP,
 		events:      make(chan Event, 256),
+		errc:        make(chan error, 1),
 		done:        make(chan struct{}),
 		vtIn:        vtOk,
 	}
@@ -210,6 +212,13 @@ func Init() (*Console, error) {
 // Events returns the stream of console events.
 func (c *Console) Events() <-chan Event {
 	return c.events
+}
+
+// Errc returns a channel that receives fatal errors from the input loop
+// goroutines. A value on this channel means the input loop has died and
+// the application should shut down.
+func (c *Console) Errc() <-chan error {
+	return c.errc
 }
 
 // Size returns the current terminal size in cells.
@@ -291,6 +300,16 @@ func (c *Console) Close() error {
 // VT sequences for keyboard and mouse events. Otherwise it falls back to
 // ReadConsoleInputW for legacy INPUT_RECORD-based reading.
 func (c *Console) inputLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			select {
+			case c.errc <- fmt.Errorf("console input loop panic: %v", r):
+			default:
+			}
+			close(c.done)
+			panic(r)
+		}
+	}()
 	if c.vtIn {
 		c.inputLoopVT()
 	} else {
@@ -352,6 +371,16 @@ func (c *Console) inputLoopVT() {
 // when it changes. This is needed because WINDOW_BUFFER_SIZE_RECORD is not
 // available when VT input mode is active.
 func (c *Console) resizePoller() {
+	defer func() {
+		if r := recover(); r != nil {
+			select {
+			case c.errc <- fmt.Errorf("console resize poller panic: %v", r):
+			default:
+			}
+			close(c.done)
+			panic(r)
+		}
+	}()
 	var lastCols, lastRows int
 	for {
 		select {
