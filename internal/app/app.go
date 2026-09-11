@@ -1135,7 +1135,9 @@ func (a *App) cleanup() {
 			}
 		}
 		if a.con != nil {
-			a.con.Close()
+			if err := a.con.Close(); err != nil {
+				fmt.Fprintln(os.Stderr, "warning: console restore:", err)
+			}
 		}
 		if trailLog != nil {
 			trailLog.Close()

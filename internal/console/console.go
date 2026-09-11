@@ -1,6 +1,7 @@
 package console
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -265,14 +266,24 @@ func colorrefToColor(c uint32) emulator.Color {
 }
 
 // Close restores the original console modes and stops the input loop.
-func (c *Console) Close() {
+func (c *Console) Close() error {
+	var errs []error
 	c.closeOnce.Do(func() {
 		close(c.done)
-		windows.SetConsoleMode(c.out, c.origOut)
-		windows.SetConsoleMode(c.in, c.origIn)
-		windows.SetConsoleOutputCP(c.origCP)
-		windows.SetConsoleCP(c.origInputCP)
+		if err := windows.SetConsoleMode(c.out, c.origOut); err != nil {
+			errs = append(errs, fmt.Errorf("restore output mode: %w", err))
+		}
+		if err := windows.SetConsoleMode(c.in, c.origIn); err != nil {
+			errs = append(errs, fmt.Errorf("restore input mode: %w", err))
+		}
+		if err := windows.SetConsoleOutputCP(c.origCP); err != nil {
+			errs = append(errs, fmt.Errorf("restore output codepage: %w", err))
+		}
+		if err := windows.SetConsoleCP(c.origInputCP); err != nil {
+			errs = append(errs, fmt.Errorf("restore input codepage: %w", err))
+		}
 	})
+	return errors.Join(errs...)
 }
 
 // inputLoop reads console input and translates them into events.
