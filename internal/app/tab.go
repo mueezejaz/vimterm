@@ -178,10 +178,14 @@ func (a *App) closeTab(i int) {
 	t := a.tabs[i]
 	t.gen.Add(1) // silence this tab's reader/waiter goroutines
 	sess := t.sess
+	emu := t.emu
 	go func() {
 		defer a.restoreOnPanic()
 		_ = sess.Kill()
 		_ = sess.Close()
+		if emu != nil {
+			_ = emu.Close()
+		}
 	}()
 	a.tabs = append(a.tabs[:i], a.tabs[i+1:]...)
 	switch {

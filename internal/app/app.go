@@ -1130,6 +1130,9 @@ func (a *App) cleanup() {
 				_ = t.sess.Kill()
 				_ = t.sess.Close()
 			}
+			if t.emu != nil {
+				_ = t.emu.Close()
+			}
 		}
 		if a.con != nil {
 			a.con.Close()
@@ -1304,6 +1307,7 @@ func (a *App) restartShell() {
 	t.gen.Add(1)
 	t.err = atomic.Value{} // drop the old session's read error, if any
 	old := t.sess
+	oldEmu := t.emu
 	emu := emulator.New(cols, termRows)
 	emu.SetScrollbackSize(a.scrollbackSize())
 	emu.SetCallbacks(vt.Callbacks{
@@ -1333,6 +1337,9 @@ func (a *App) restartShell() {
 		defer a.restoreOnPanic()
 		_ = old.Kill()
 		_ = old.Close()
+		if oldEmu != nil {
+			_ = oldEmu.Close()
+		}
 	}()
 	a.setStatusMsg("shell restarted")
 }
