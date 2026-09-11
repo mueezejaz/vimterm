@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"time"
 )
@@ -34,9 +35,16 @@ func Watch(path string, interval time.Duration, cb func(*Config, error)) func() 
 				if size == 0 || newSize == 0 {
 					continue
 				}
-				if newMod.Equal(mod) && newSize == size {
+			if newMod.Equal(mod) && newSize == size {
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							fmt.Fprintf(os.Stderr, "warning: config reload panic: %v\n", r)
+						}
+					}()
 					cb(cfg, err)
-				}
+				}()
+			}
 				lastMod, lastSize = newMod, newSize
 			}
 		}
