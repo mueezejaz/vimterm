@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vimterm - A Vim-like Terminal Emulator for Windows</title>
+  <meta name="description" content="A Vim-like terminal emulator for Windows. Modal keybindings, ConPTY shell integration, scrollback, search, yank, macros — all driven by Vim.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>></text></svg>">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo"><span class="logo-icon">&gt;</span> vimterm</a>
+      <div class="nav-links">
+        <a href="docs.html">Docs</a>
+        <a href="https://github.com/mueezejaz/vimterm" target="_blank">GitHub</a>
+        <a href="https://github.com/mueezejaz/vimterm/releases" target="_blank" class="btn btn-sm">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <h1 class="hero-title">Your terminal,<br><span class="accent">Vim-powered.</span></h1>
+    <p class="hero-sub">A native Windows terminal emulator with modal Vim keybindings. Navigate, search, yank, paste, record macros — while your shell keeps running underneath.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/mueezejaz/vimterm/releases" class="btn btn-primary">Download vimterm</a>
+      <a href="docs.html" class="btn btn-ghost">Read the Docs</a>
+    </div>
+  </section>
+
+  <section class="video-section">
+    <div class="video-wrapper">
+      <video autoplay muted loop playsinline>
+        <source src="https://github.com/mueezejaz/vimterm/raw/main/demo.mp4" type="video/mp4">
+      </video>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⌘</div>
+        <h3>Modal Editing</h3>
+        <p>Normal, Insert, Visual, and Visual Line modes. The keybindings you already know, right in your terminal.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>ConPTY Native</h3>
+        <p>Built on Windows ConPTY. Full UTF-8 support, proper process lifetime, and seamless shell integration.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⟳</div>
+        <h3>Scrollback & Search</h3>
+        <p>10,000+ lines of scrollback. Incremental search with highlighting. <code>gg</code>, <code>G</code>, <code>ctrl+u/d</code> to navigate.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⊞</div>
+        <h3>Tab Management</h3>
+        <p>Multiple shell sessions in tabs. Named tabs, filterable tab switcher, background output accumulation.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">◉</div>
+        <h3>Visual Selection</h3>
+        <p>Character-wise and line-wise selection. Yank to clipboard, paste anywhere. <code>yy</code>, <code>dw</code>, <code>p</code>.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">↻</div>
+        <h3>Macros & Repeat</h3>
+        <p>Record complex sequences with <code>q</code>, replay with <code>@</code>. Repeat the last action with <code>.</code></p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">✎</div>
+        <h3>Fully Configurable</h3>
+        <p>TOML config with live hot-reload. Rebind any key, remap leader, define custom colon-commands.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">◈</div>
+        <h3>Cursor Trail</h3>
+        <p>Optional animated cursor trail with braille rendering, configurable easing, glow, and opacity.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <h2>Take control of your terminal.</h2>
+    <p>Free, open-source, and built for Windows.</p>
+    <a href="https://github.com/mueezejaz/vimterm/releases" class="btn btn-primary btn-lg">Download vimterm</a>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="footer-logo"><span class="logo-icon">&gt;</span> vimterm</span>
+      <span>Built with Go + ConPTY</span>
+      <a href="https://github.com/mueezejaz/vimterm" target="_blank">GitHub</a>
+    </div>
+  </footer>
+</body>
+</html>

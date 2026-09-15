@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation — vimterm</title>
+  <meta name="description" content="Complete documentation for vimterm: a Vim-like terminal emulator for Windows.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>></text></svg>">
+  <style>
+    .docs-layout {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding-top: 56px;
+    }
+    .docs-sidebar {
+      position: sticky;
+      top: 56px;
+      height: calc(100vh - 56px);
+      width: 260px;
+      min-width: 260px;
+      padding: 28px 20px;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      font-size: 0.85rem;
+    }
+    .docs-sidebar h4 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin: 20px 0 8px;
+      font-weight: 700;
+    }
+    .docs-sidebar h4:first-child { margin-top: 0; }
+    .docs-sidebar a {
+      display: block;
+      padding: 4px 10px;
+      border-radius: 5px;
+      color: var(--text-dim);
+      transition: all 0.15s;
+    }
+    .docs-sidebar a:hover,
+    .docs-sidebar a.active {
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+    }
+    .docs-sidebar a.active {
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .docs-main {
+      flex: 1;
+      min-width: 0;
+      padding: 40px 48px 80px;
+    }
+    .docs-main h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+    .docs-main h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin: 48px 0 16px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      letter-spacing: -0.01em;
+    }
+    .docs-main h2:first-of-type { border-top: none; margin-top: 32px; }
+    .docs-main h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin: 28px 0 10px;
+    }
+    .docs-main p {
+      margin-bottom: 14px;
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+    .docs-main ul, .docs-main ol {
+      margin: 0 0 16px 20px;
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+    .docs-main li { margin-bottom: 4px; }
+    .docs-main a { color: var(--accent); }
+    .docs-main a:hover { text-decoration: underline; }
+    .docs-subtitle {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      margin-bottom: 32px;
+    }
+    .docs-main code {
+      background: rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+    .docs-main pre {
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 0 0 16px;
+      font-size: 0.84rem;
+      line-height: 1.6;
+    }
+    .docs-main pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 20px;
+      font-size: 0.88rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    td code {
+      font-size: 0.82rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
+    .badge-normal { background: var(--accent-dim); color: var(--accent); }
+    .badge-insert { background: rgba(34,197,94,0.12); color: #22c55e; }
+    .badge-visual { background: rgba(168,85,247,0.12); color: #a855f7; }
+    .badge-all { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+    .callout {
+      padding: 16px 20px;
+      border-radius: 8px;
+      border-left: 3px solid var(--accent);
+      background: var(--accent-dim);
+      margin: 0 0 16px;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .callout strong { color: var(--accent); }
+    @media (max-width: 860px) {
+      .docs-layout { flex-direction: column; }
+      .docs-sidebar {
+        position: static;
+        width: 100%;
+        min-width: 0;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 16px 20px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .docs-sidebar h4 {
+        width: 100%;
+        margin: 12px 0 4px;
+      }
+      .docs-sidebar a { padding: 3px 8px; font-size: 0.8rem; }
+      .docs-main { padding: 28px 20px 60px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo"><span class="logo-icon">&gt;</span> vimterm</a>
+      <div class="nav-links">
+        <a href="docs.html" style="color:var(--text)">Docs</a>
+        <a href="https://github.com/mueezejaz/vimterm" target="_blank">GitHub</a>
+        <a href="https://github.com/mueezejaz/vimterm/releases" target="_blank" class="btn btn-sm">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar" id="sidebar">
+      <h4>Getting Started</h4>
+      <a href="#overview">Overview</a>
+      <a href="#requirements">Requirements</a>
+      <a href="#installation">Installation</a>
+      <a href="#building">Building from Source</a>
+      <a href="#usage">Usage</a>
+      <h4>Configuration</h4>
+      <a href="#config-file">Config File</a>
+      <a href="#general">General Options</a>
+      <a href="#colors">Colors</a>
+      <a href="#custom-commands">Custom Commands</a>
+      <h4>Keybindings</h4>
+      <a href="#modes">Modes</a>
+      <a href="#token-syntax">Token Syntax</a>
+      <a href="#normal-mode">Normal Mode</a>
+      <a href="#insert-mode">Insert Mode</a>
+      <a href="#visual-mode">Visual Mode</a>
+      <a href="#actions">All Actions</a>
+      <h4>Features</h4>
+      <a href="#tabs">Tabs</a>
+      <a href="#search">Search</a>
+      <a href="#macros">Macros</a>
+      <a href="#mouse">Mouse Support</a>
+      <a href="#cursor-trail">Cursor Trail</a>
+      <a href="#status-line">Status Line</a>
+      <a href="#wide-chars">Wide Characters</a>
+      <h4>Reference</a>
+      <a href="#colon-commands">Colon Commands</a>
+      <a href="#debug">Debug</a>
+      <a href="#architecture">Architecture</a>
+    </aside>
+
+    <main class="docs-main">
+      <h1 id="overview">vimterm</h1>
+      <p class="docs-subtitle">A Vim-like terminal emulator for Windows.</p>
+
+      <p>vimterm spawns a shell (PowerShell, cmd.exe, WSL, ...) inside a Windows ConPTY, renders its output through a built-in VT emulator, and lets you drive the terminal with modal Vim-style keybindings. Navigate the screen and scrollback, search, yank and paste, record macros — all while the shell keeps running underneath.</p>
+
+      <h2 id="requirements">Requirements</h2>
+      <ul>
+        <li><strong>Windows 10 version 1809</strong> or later (ConPTY API)</li>
+        <li>If building from source: <strong>Go 1.26+</strong></li>
+      </ul>
+
+      <h2 id="installation">Installation</h2>
+      <h3>Pre-built binary</h3>
+      <p>Download the latest <code>vimterm.exe</code> (or the zip archive) from the <a href="https://github.com/mueezejaz/vimterm/releases">Releases</a> page. Your config file is created automatically on first launch at <code>%APPDATA%\vimterm\config.toml</code>.</p>
+
+      <h2 id="building">Building from Source</h2>
+      <pre><code>git clone https://github.com/mueezejaz/vimterm.git
+cd vimterm
+go build -o vimterm.exe .</code></pre>
+
+      <h2 id="usage">Usage</h2>
+      <pre><code>vimterm [options]
+  -config path   path to config file (default: %APPDATA%\vimterm\config.toml)
+  -shell prog    shell program to launch (overrides config)</code></pre>
+      <p>Quit with <code>ctrl+q</code> or <code>:quit</code>.</p>
+
+      <h2 id="config-file">Configuration</h2>
+      <p>The config file lives at <code>%APPDATA%\vimterm\config.toml</code> and is created with all defaults and comments on first launch. Editing it reloads keybindings and colors live (checked once per second); other settings apply on the next launch.</p>
+
+      <div class="callout">
+        <strong>Tip:</strong> The config is a standard TOML file. Any keybinding section you define fully replaces the defaults for that mode — partial overrides are not supported.
+      </div>
+
+      <h3>Full example</h3>
+      <pre><code>[general]
+shell = "pwsh.exe"
+shell_args = ["-NoLogo"]
+scrollback = 20000
+leader = "space"
+timeoutlen = 1000
+status_merge = "auto"
+
+[colors]
+status_fg = "#00ff87"
+status_bg = "#262335"
+
+[commands]
+clean = "leader+c"
+
+[cursor_trail]
+enabled = true
+duration = 300
+opacity = 0.6
+easing = "ease_out"
+glow = 0.3
+color = "#2dd4bf"
+
+[keybindings.normal]
+"leader+c" = "scroll_up"
+"ctrl+y" = "scroll_down"
+"$" = "move_line_end"
+
+[keybindings.insert]
+# only esc and ctrl+q are bound by default; all other keys pass through
+
+[keybindings.visual]
+"y" = "yank"
+"d" = "yank"</code></pre>
+
+      <h2 id="general">General Options</h2>
+      <table>
+        <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>shell</code></td><td><code>"powershell.exe"</code></td><td>Program launched inside the terminal</td></tr>
+          <tr><td><code>shell_args</code></td><td><code>[]</code></td><td>Extra arguments passed to the shell</td></tr>
+          <tr><td><code>scrollback</code></td><td><code>10000</code></td><td>Max scrolled-off lines kept in memory</td></tr>
+          <tr><td><code>leader</code></td><td><code>"space"</code></td><td>Leader key token for bindings (e.g. <code>"space"</code> → Space key)</td></tr>
+          <tr><td><code>timeoutlen</code></td><td><code>1000</code></td><td>Milliseconds a partial key sequence waits before being discarded</td></tr>
+          <tr><td><code>status_merge</code></td><td><code>"auto"</code></td><td>Full-screen app status bar merging: <code>"auto"</code>, <code>"always"</code>, or <code>"never"</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Status merge modes</h3>
+      <ul>
+        <li><code>"auto"</code> — merges only when the child's bottom row looks like a status line (e.g. nvim)</li>
+        <li><code>"always"</code> — unconditionally overlays vimterm's status bar on top of the child</li>
+        <li><code>"never"</code> — keeps vimterm's bar below the child (child gets hostRows-1 rows always)</li>
+      </ul>
+
+      <h2 id="colors">Colors</h2>
+      <p>Status line colors accept <code>#rrggbb</code> hex values. An empty string uses the terminal default.</p>
+      <table>
+        <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>status_fg</code></td><td><code>""</code></td><td>Status line foreground color</td></tr>
+          <tr><td><code>status_bg</code></td><td><code>""</code></td><td>Status line background color</td></tr>
+        </tbody>
+      </table>
+      <p>If both are unset, the defaults are fg=<code>{235,235,255}</code> bg=<code>{40,40,90}</code> (slate blue theme).</p>
+
+      <h2 id="custom-commands">Custom Commands</h2>
+      <p>Map any colon-command name to a key sequence that is replayed through the keybinding engine:</p>
+      <pre><code>[commands]
+clean = "leader+c"   # :clean now runs leader+c
+reset = "ctrl+u"     # :reset runs ctrl+u</code></pre>
+      <p>Built-in colon-commands cannot be overridden (see <a href="#colon-commands">Colon Commands</a>).</p>
+
+      <h2 id="modes">Modes</h2>
+      <p>vimterm has four modes, mirroring Vim:</p>
+      <table>
+        <thead><tr><th>Mode</th><th>Label</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td>Normal</td><td><span class="badge badge-normal">NORMAL</span></td><td>Navigation and control; keys go through the keybinding engine</td></tr>
+          <tr><td>Insert</td><td><span class="badge badge-insert">INSERT</span></td><td>Keys pass through to the shell verbatim</td></tr>
+          <tr><td>Visual</td><td><span class="badge badge-visual">VISUAL</span></td><td>Character-wise selection; movement extends the selection</td></tr>
+          <tr><td>Visual Line</td><td><span class="badge badge-visual">VISUAL LINE</span></td><td>Line-wise selection</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="token-syntax">Token Syntax</h2>
+      <p>Keybinding tokens follow this syntax:</p>
+      <table>
+        <thead><tr><th>Syntax</th><th>Example</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>Single key</td><td><code>h</code>, <code>G</code>, <code>f5</code></td><td>One key press</td></tr>
+          <tr><td>Sequence</td><td><code>gg</code></td><td>Two keys typed in order</td></tr>
+          <tr><td>Modifiers</td><td><code>ctrl+u</code>, <code>shift+tab</code>, <code>alt+x</code></td><td>Modifier + key</td></tr>
+          <tr><td>Named keys</td><td><code>esc</code>, <code>enter</code>, <code>backspace</code>, <code>tab</code>, <code>up</code>, <code>down</code>, <code>left</code>, <code>right</code>, <code>home</code>, <code>end</code>, <code>pageup</code>, <code>pagedown</code>, <code>insert</code>, <code>delete</code></td><td>Special key names</td></tr>
+          <tr><td>Leader</td><td><code>leader+t</code></td><td>Resolves to the configured leader key + <code>t</code></td></tr>
+          <tr><td>Uppercase/punctuation</td><td><code>:</code>, <code>Y</code></td><td>Implies shift</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Chains</h3>
+      <p>The value side can be an action name or an ordered list (chain) of action names:</p>
+      <pre><code>"leader+nt" = ["new_tab", "rename_prompt"]   # open a tab, then ask for its name
+"cos" = ["clear", "shell"]                   # wipe scrollback, restart the shell</code></pre>
+      <p>A chain stops early if a step opens a prompt (the prompt takes over all input until committed or dismissed); every other step always runs.</p>
+
+      <h3>Disabling bindings</h3>
+      <p>Set the value to an empty string to remove a default binding:</p>
+      <pre><code>"ctrl+q" = ""   # disable the default quit binding</code></pre>
+
+      <h2 id="normal-mode">Normal Mode Bindings</h2>
+      <table>
+        <thead><tr><th>Binding</th><th>Action</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>h</code> / <code>left</code></td><td><code>move_left</code></td><td>Move cursor left</td></tr>
+          <tr><td><code>j</code> / <code>down</code></td><td><code>move_down</code></td><td>Move cursor down</td></tr>
+          <tr><td><code>k</code> / <code>up</code></td><td><code>move_up</code></td><td>Move cursor up</td></tr>
+          <tr><td><code>l</code> / <code>right</code></td><td><code>move_right</code></td><td>Move cursor right</td></tr>
+          <tr><td><code>gg</code></td><td><code>goto_top</code></td><td>Jump to top of scrollback</td></tr>
+          <tr><td><code>G</code></td><td><code>goto_bottom</code></td><td>Jump to bottom of screen</td></tr>
+          <tr><td><code>ctrl+u</code></td><td><code>scroll_up</code></td><td>Scroll up half page (or N lines with count)</td></tr>
+          <tr><td><code>ctrl+d</code></td><td><code>scroll_down</code></td><td>Scroll down half page</td></tr>
+          <tr><td><code>$</code></td><td><code>move_line_end</code></td><td>Move to last non-blank character on line</td></tr>
+          <tr><td><code>^</code></td><td><code>move_line_beg</code></td><td>Move to first non-blank character on line</td></tr>
+          <tr><td><code>w</code></td><td><code>move_word</code></td><td>Next word start</td></tr>
+          <tr><td><code>b</code></td><td><code>move_word_back</code></td><td>Previous word start</td></tr>
+          <tr><td><code>e</code></td><td><code>move_word_end</code></td><td>Next word end</td></tr>
+          <tr><td><code>W</code></td><td><code>move_word_upper</code></td><td>Next WORD start (whitespace-delimited)</td></tr>
+          <tr><td><code>B</code></td><td><code>move_word_back_upper</code></td><td>Previous WORD start</td></tr>
+          <tr><td><code>E</code></td><td><code>move_word_end_upper</code></td><td>Next WORD end</td></tr>
+          <tr><td><code>i</code></td><td><code>enter_insert</code></td><td>Enter insert mode at cursor</td></tr>
+          <tr><td><code>a</code></td><td><code>enter_insert_after</code></td><td>Enter insert mode after cursor</td></tr>
+          <tr><td><code>A</code></td><td><code>enter_insert_end</code></td><td>Enter insert mode at end of line</td></tr>
+          <tr><td><code>I</code></td><td><code>enter_insert_home</code></td><td>Enter insert mode at first non-blank</td></tr>
+          <tr><td><code>/</code></td><td><code>search_forward</code></td><td>Open incremental search prompt</td></tr>
+          <tr><td><code>n</code></td><td><code>search_next</code></td><td>Next search match</td></tr>
+          <tr><td><code>N</code></td><td><code>search_prev</code></td><td>Previous search match</td></tr>
+          <tr><td><code>:</code></td><td><code>command_prompt</code></td><td>Open colon-command prompt</td></tr>
+          <tr><td><code>v</code></td><td><code>enter_visual</code></td><td>Enter character-wise visual mode</td></tr>
+          <tr><td><code>V</code></td><td><code>enter_visual_line</code></td><td>Enter line-wise visual mode</td></tr>
+          <tr><td><code>y</code></td><td><code>yank</code></td><td>Yank (copy) visual selection to clipboard</td></tr>
+          <tr><td><code>yy</code></td><td><code>yank_line</code></td><td>Yank whole line (with count: N lines)</td></tr>
+          <tr><td><code>dw</code></td><td><code>delete_word</code></td><td>Delete word forward (cuts to clipboard)</td></tr>
+          <tr><td><code>db</code></td><td><code>delete_word_back</code></td><td>Delete word backward</td></tr>
+          <tr><td><code>p</code></td><td><code>paste</code></td><td>Paste after cursor</td></tr>
+          <tr><td><code>P</code></td><td><code>paste_before</code></td><td>Paste before cursor</td></tr>
+          <tr><td><code>q</code></td><td><code>record_macro</code></td><td>Start/stop macro recording</td></tr>
+          <tr><td><code>@</code></td><td><code>play_macro</code></td><td>Play macro from register</td></tr>
+          <tr><td><code>.</code></td><td><code>repeat_last</code></td><td>Repeat last command</td></tr>
+          <tr><td><code>f</code></td><td><code>find_char</code></td><td>Find character forward on line</td></tr>
+          <tr><td><code>F</code></td><td><code>find_char_back</code></td><td>Find character backward on line</td></tr>
+          <tr><td><code>t</code></td><td><code>find_until</code></td><td>Find character forward (stop before)</td></tr>
+          <tr><td><code>T</code></td><td><code>find_until_back</code></td><td>Find character backward (stop after)</td></tr>
+          <tr><td><code>;</code></td><td><code>find_next</code></td><td>Repeat last f/F/t/T in same direction</td></tr>
+          <tr><td><code>,</code></td><td><code>find_prev</code></td><td>Repeat last f/F/t/T in opposite direction</td></tr>
+          <tr><td><code>gt</code></td><td><code>next_tab</code></td><td>Switch to next tab (with count: tab N)</td></tr>
+          <tr><td><code>gT</code></td><td><code>prev_tab</code></td><td>Switch to previous tab</td></tr>
+          <tr><td><code>leader+nt</code></td><td><code>["new_tab", "rename_prompt"]</code></td><td>Open new tab and prompt for name</td></tr>
+          <tr><td><code>leader+tt</code></td><td><code>tab_search</code></td><td>Open tab switcher popup</td></tr>
+          <tr><td><code>ctrl+q</code></td><td><code>quit</code></td><td>Quit vimterm</td></tr>
+          <tr><td><code>ctrl+w</code></td><td><code>close_tab</code></td><td>Close current tab</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="insert-mode">Insert Mode Bindings</h2>
+      <table>
+        <thead><tr><th>Binding</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><code>esc</code></td><td><code>enter_normal</code> — return to normal mode</td></tr>
+          <tr><td><code>ctrl+q</code></td><td><code>quit</code> — exit vimterm</td></tr>
+        </tbody>
+      </table>
+      <p>All other keys pass through to the shell verbatim.</p>
+
+      <h2 id="visual-mode">Visual Mode Bindings</h2>
+      <p>All normal-mode movement keys work in visual mode and extend the selection. Additional bindings:</p>
+      <table>
+        <thead><tr><th>Binding</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><code>y</code> / <code>d</code></td><td><code>yank</code> — copy selection to clipboard</td></tr>
+          <tr><td><code>p</code> / <code>P</code></td><td><code>paste</code> / <code>paste_before</code></td></tr>
+          <tr><td><code>v</code></td><td>Toggle/cancel visual mode</td></tr>
+          <tr><td><code>V</code></td><td>Switch to visual line mode</td></tr>
+          <tr><td><code>i</code></td><td><code>enter_insert</code></td></tr>
+          <tr><td><code>esc</code></td><td><code>enter_normal</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="actions">All Available Actions</h2>
+      <table>
+        <thead><tr><th>Action</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>move_left</code> <code>move_right</code> <code>move_up</code> <code>move_down</code></td><td>Move cursor</td></tr>
+          <tr><td><code>move_line_end</code> <code>move_line_beg</code></td><td>Move to end / first non-blank of line</td></tr>
+          <tr><td><code>scroll_up</code> <code>scroll_down</code></td><td>Scroll half page (or N lines with count)</td></tr>
+          <tr><td><code>goto_top</code> <code>goto_bottom</code></td><td>Jump to top / bottom of scrollback</td></tr>
+          <tr><td><code>enter_insert</code> <code>enter_insert_after</code> <code>enter_insert_end</code> <code>enter_insert_home</code></td><td>Enter insert mode at various positions</td></tr>
+          <tr><td><code>enter_normal</code></td><td>Return to normal mode</td></tr>
+          <tr><td><code>search_forward</code> <code>search_next</code> <code>search_prev</code></td><td>Incremental search</td></tr>
+          <tr><td><code>command_prompt</code> <code>rename_prompt</code></td><td>Open colon-command / rename prompt</td></tr>
+          <tr><td><code>enter_visual</code> <code>enter_visual_line</code> <code>cancel_visual</code></td><td>Visual mode control</td></tr>
+          <tr><td><code>yank</code> <code>yank_line</code></td><td>Yank selection / whole line</td></tr>
+          <tr><td><code>paste</code> <code>paste_before</code></td><td>Paste after / before cursor</td></tr>
+          <tr><td><code>delete_word</code> <code>delete_word_back</code></td><td>Delete word forward / backward</td></tr>
+          <tr><td><code>record_macro</code> <code>play_macro</code></td><td>Record / play macro</td></tr>
+          <tr><td><code>repeat_last</code></td><td>Repeat last command (<code>.</code>)</td></tr>
+          <tr><td><code>find_char</code> <code>find_char_back</code> <code>find_until</code> <code>find_until_back</code> <code>find_next</code> <code>find_prev</code></td><td>Character find motions</td></tr>
+          <tr><td><code>move_word</code> <code>move_word_back</code> <code>move_word_end</code></td><td>Word motions (w/b/e)</td></tr>
+          <tr><td><code>move_word_upper</code> <code>move_word_back_upper</code> <code>move_word_end_upper</code></td><td>WORD motions (W/B/E)</td></tr>
+          <tr><td><code>next_tab</code> <code>prev_tab</code> <code>new_tab</code></td><td>Tab navigation</td></tr>
+          <tr><td><code>tab_search</code></td><td>Open tab switcher popup</td></tr>
+          <tr><td><code>close_tab</code></td><td>Close current tab</td></tr>
+          <tr><td><code>quit</code></td><td>Exit vimterm</td></tr>
+          <tr><td><code>noop</code></td><td>Do nothing</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="tabs">Tabs</h2>
+      <p>Each tab runs its own shell. Output keeps accumulating while a tab is in the background.</p>
+      <table>
+        <thead><tr><th>Binding</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><code>gt</code></td><td>Switch to next tab (<code>3gt</code> jumps to tab 3)</td></tr>
+          <tr><td><code>gT</code></td><td>Switch to previous tab</td></tr>
+          <tr><td><code>leader+nt</code></td><td>Open new tab and prompt for a name</td></tr>
+          <tr><td><code>leader+tt</code></td><td>Open tab switcher popup (type to filter, enter to select)</td></tr>
+          <tr><td><code>:rename &lt;name&gt;</code></td><td>Name the current tab (shown in status line)</td></tr>
+          <tr><td><code>:close</code> / <code>:tabclose</code></td><td>Close the current tab</td></tr>
+          <tr><td><code>ctrl+w</code></td><td>Close current tab</td></tr>
+        </tbody>
+      </table>
+      <p>Tab labels truncate at 8 characters. Closing the last tab exits vimterm.</p>
+
+      <h2 id="search">Search</h2>
+      <ul>
+        <li><code>/</code> opens the incremental search prompt. Type your query and press <code>enter</code> to confirm, or <code>esc</code> to cancel.</li>
+        <li>Matches are highlighted as you type.</li>
+        <li><code>n</code> jumps to the next match, <code>N</code> to the previous.</li>
+        <li><code>:noh</code> or <code>:nohlsearch</code> clears the search highlighting.</li>
+      </ul>
+
+      <h2 id="macros">Macros</h2>
+      <ul>
+        <li><code>q</code> starts recording (the status line shows <code>RECORD</code>). Press <code>q</code> again to stop.</li>
+        <li><code>@</code> plays back the recorded macro.</li>
+        <li>With a count prefix (<code>5@q</code>), the macro plays N times.</li>
+      </ul>
+
+      <h2 id="mouse">Mouse Support</h2>
+      <ul>
+        <li><strong>Click</strong> — positions the cursor</li>
+        <li><strong>Drag</strong> — builds a character-wise selection</li>
+        <li><strong>Double-click</strong> — selects a word</li>
+        <li><strong>Scroll wheel</strong> — scrolls up/down</li>
+        <li><strong>VT passthrough</strong> — when the child process requests mouse tracking (e.g. nvim), mouse events are forwarded as VT escape sequences</li>
+      </ul>
+
+      <h2 id="cursor-trail">Cursor Trail</h2>
+      <p>An optional animated cursor trail (smear effect) renders fading ghost cursors using Unicode braille (2x4 sub-cell dots per cell) for smooth diagonal rendering, with quarter-cell block fallbacks.</p>
+      <pre><code>[cursor_trail]
+enabled = true
+duration = 300       # how long each ghost lives (ms)
+opacity = 0.6        # max opacity of newest ghost (0.0-1.0)
+max_positions = 40   # ring buffer capacity
+easing = "ease_out"  # "linear", "ease_in", "ease_out", "ease_in_out"
+color = ""           # trail color (#rrggbb), empty = terminal default fg
+glow = 0.3           # glow intensity (0.0-1.0), blends toward white</code></pre>
+
+      <h2 id="status-line">Status Line</h2>
+      <p>The status line at the bottom shows:</p>
+      <ul>
+        <li>Current mode (<span class="badge badge-normal">NORMAL</span>, <span class="badge badge-insert">INSERT</span>, <span class="badge badge-visual">VISUAL</span>)</li>
+        <li>Transient messages (search results, macro state, etc.)</li>
+        <li>Shell name</li>
+        <li>Cursor position (row, col)</li>
+        <li>Tab labels (when multiple tabs are open)</li>
+      </ul>
+
+      <h2 id="wide-chars">Wide Characters</h2>
+      <p>Double-width CJK characters are correctly handled: cursor snapping, line editing, and display width calculations all account for characters that occupy two terminal columns.</p>
+
+      <h2 id="colon-commands">Colon Commands</h2>
+      <p>Built-in colon-commands (cannot be overridden):</p>
+      <table>
+        <thead><tr><th>Command</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>:quit</code></td><td>Exit vimterm</td></tr>
+          <tr><td><code>:clear</code></td><td>Clear scrollback buffer</td></tr>
+          <tr><td><code>:shell</code></td><td>Restart the shell</td></tr>
+          <tr><td><code>:new</code> / <code>:tabnew</code></td><td>Open a new shell in a new tab</td></tr>
+          <tr><td><code>:close</code> / <code>:tabclose</code></td><td>Close the current tab</td></tr>
+          <tr><td><code>:rename &lt;name&gt;</code></td><td>Name the current tab (bare <code>:rename</code> resets)</td></tr>
+          <tr><td><code>:noh</code> / <code>:nohlsearch</code></td><td>Clear search highlighting</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="debug">Debug</h2>
+      <p>Environment variables for debug logging (output goes to temp files):</p>
+      <table>
+        <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>VIMTERM_DEBUG_TRAIL</code></td><td>Log cursor trail data</td></tr>
+          <tr><td><code>VIMTERM_DEBUG_CONSOLE</code></td><td>Log console I/O events</td></tr>
+          <tr><td><code>VIMTERM_DEBUG_INPUT</code></td><td>Log raw input bytes</td></tr>
+        </tbody>
+      </table>
+      <p>The <code>cmd/dumpbytes</code> tool hex-dumps raw ConPTY bytes for debugging encoding issues:</p>
+      <pre><code>go run ./cmd/dumpbytes</code></pre>
+
+      <h2 id="architecture">Architecture</h2>
+      <p>The data flow:</p>
+      <pre><code>main.go → app.Run()
+  ├─ Console input events → keybind engine → action map → PTY session writes
+  └─ PTY output → emulator (VT parsing) → renderer → dirty-flag frame drawing</code></pre>
+      <ul>
+        <li><strong>ConPTY</strong> — wraps the Windows ConPTY API for process creation and I/O</li>
+        <li><strong>Emulator</strong> — built-in VT parser that processes ANSI escape sequences into a cell grid</li>
+        <li><strong>Renderer</strong> — diffs consecutive frames and writes only changed cells to the host console</li>
+        <li><strong>Keybinding engine</strong> — trie-based matcher with timeout for multi-key sequences</li>
+        <li><strong>Search</strong> — incremental matching with highlight tracking across scrollback</li>
+        <li><strong>Selection</strong> — character-wise and line-wise with clipboard integration via Win32 CF_UNICODETEXT</li>
+      </ul>
+
+      <div class="callout">
+        <strong>Note:</strong> vimterm wraps all shell commands in <code>chcp 65001</code> for UTF-8 codepage support on Windows. This prevents mojibake in ConPTY output.
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    // Active sidebar link tracking
+    const links = document.querySelectorAll('.docs-sidebar a');
+    const sections = [];
+    links.forEach(a => {
+      const id = a.getAttribute('href')?.replace('#', '');
+      if (id) {
+        const el = document.getElementById(id);
+        if (el) sections.push({ el, a });
+      }
+    });
+    function updateActive() {
+      let current = sections[0];
+      for (const s of sections) {
+        if (s.el.getBoundingClientRect().top <= 120) current = s;
+      }
+      links.forEach(a => a.classList.remove('active'));
+      if (current) current.a.classList.add('active');
+    }
+    window.addEventListener('scroll', updateActive, { passive: true });
+    updateActive();
+  </script>
+</body>
+</html>
