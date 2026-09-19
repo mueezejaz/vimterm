@@ -208,39 +208,46 @@ func (p *vtParser) parseSS3(buf []byte, events *[]Event) int {
 	// Extended SS3: ESC O 1 ; <mod> <letter>
 	// The "1;" prefix indicates a modified key.
 	if buf[2] >= '0' && buf[2] <= '9' {
-		// Scan for the pattern: digits ; digits letter
+		// Scan for the pattern: digits ; digits letter. A leading digit
+		// run alone is never a complete sequence, so buffer it until the
+		// ';' (and later the final letter) arrives instead of consuming it
+		// and silently dropping the rest of the extended SS3 sequence.
 		i := 2
 		for i < len(buf) && buf[i] >= '0' && buf[i] <= '9' {
 			i++
 		}
-		if i < len(buf) && buf[i] == ';' {
+		if i >= len(buf) {
+			return 0 // need more data (awaiting ';')
+		}
+		if buf[i] == ';' {
 			i++ // skip ;
 			modStart := i
 			for i < len(buf) && buf[i] >= '0' && buf[i] <= '9' {
 				i++
 			}
-			if i < len(buf) {
-				final := buf[i]
-				i++
-				modCode, _ := strconv.Atoi(string(buf[modStart : i-1]))
-				mods := vtModToKeybind(modCode)
+			if i >= len(buf) {
+				return 0 // need more data (awaiting the final letter)
+			}
+			final := buf[i]
+			i++
+			modCode, _ := strconv.Atoi(string(buf[modStart : i-1]))
+			mods := vtModToKeybind(modCode)
 
-				var code keybind.Code
-				switch final {
-				case 'P':
-					code = keybind.CodeF1
-				case 'Q':
-					code = keybind.CodeF2
-				case 'R':
-					code = keybind.CodeF3
-				case 'S':
-					code = keybind.CodeF4
-				default:
-					return i
-				}
-				*events = append(*events, KeyEvent{Key: keybind.NewCode(code, mods)})
+			var code keybind.Code
+			switch final {
+			case 'P':
+				code = keybind.CodeF1
+			case 'Q':
+				code = keybind.CodeF2
+			case 'R':
+				code = keybind.CodeF3
+			case 'S':
+				code = keybind.CodeF4
+			default:
 				return i
 			}
+			*events = append(*events, KeyEvent{Key: keybind.NewCode(code, mods)})
+			return i
 		}
 		// Malformed — fall through
 	}
