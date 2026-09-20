@@ -325,7 +325,6 @@ func (a *App) startReader(t *tabState) {
 func (a *App) restoreOnPanic() {
 	if r := recover(); r != nil {
 		a.cleanup()
-		panic(r)
 	}
 }
 

@@ -312,7 +312,6 @@ func (c *Console) inputLoop() {
 			default:
 			}
 			close(c.done)
-			panic(r)
 		}
 	}()
 	if c.vtIn {
@@ -384,7 +383,6 @@ func (c *Console) resizePoller() {
 			default:
 			}
 			close(c.done)
-			panic(r)
 		}
 	}()
 	var lastCols, lastRows int
