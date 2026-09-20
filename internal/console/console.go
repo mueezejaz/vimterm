@@ -107,6 +107,7 @@ type Console struct {
 	errc        chan error
 	done        chan struct{}
 	closeOnce   sync.Once
+	wg          sync.WaitGroup
 
 	// prevBtnState tracks the last mouse button state for release detection.
 	prevBtnState uint32
@@ -202,8 +203,10 @@ func Init() (*Console, error) {
 		c.initInputDebug()
 	}
 
+	c.wg.Add(1)
 	go c.inputLoop()
 	if vtOk {
+		c.wg.Add(1)
 		go c.resizePoller()
 	}
 	return c, nil
@@ -279,6 +282,7 @@ func (c *Console) Close() error {
 	var errs []error
 	c.closeOnce.Do(func() {
 		close(c.done)
+		c.wg.Wait()
 		if err := windows.SetConsoleMode(c.out, c.origOut); err != nil {
 			errs = append(errs, fmt.Errorf("restore output mode: %w", err))
 		}
@@ -300,6 +304,7 @@ func (c *Console) Close() error {
 // VT sequences for keyboard and mouse events. Otherwise it falls back to
 // ReadConsoleInputW for legacy INPUT_RECORD-based reading.
 func (c *Console) inputLoop() {
+	defer c.wg.Done()
 	defer func() {
 		if r := recover(); r != nil {
 			select {
@@ -371,6 +376,7 @@ func (c *Console) inputLoopVT() {
 // when it changes. This is needed because WINDOW_BUFFER_SIZE_RECORD is not
 // available when VT input mode is active.
 func (c *Console) resizePoller() {
+	defer c.wg.Done()
 	defer func() {
 		if r := recover(); r != nil {
 			select {
