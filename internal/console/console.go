@@ -342,7 +342,11 @@ func (c *Console) inputLoopVT() {
 
 		var read uint32
 		err = windows.ReadFile(c.in, buf, &read, nil)
-		if err != nil || read == 0 {
+		if err != nil {
+			consoleDebugLog("ReadFile error: %v", err)
+			return
+		}
+		if read == 0 {
 			continue
 		}
 
