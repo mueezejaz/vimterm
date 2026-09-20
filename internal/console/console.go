@@ -119,6 +119,9 @@ type Console struct {
 	// Parameters are the raw bytes and the count of bytes read.
 	inputDebug func(data []byte, n int)
 
+	// inputDebugFile is the underlying file for inputDebug; closed on Close().
+	inputDebugFile *os.File
+
 	// vtIn is true when ENABLE_VIRTUAL_TERMINAL_INPUT is active. When set,
 	// the input loop reads raw VT sequences via ReadFile instead of
 	// ReadConsoleInputW, which is required to receive mouse events from
@@ -283,6 +286,9 @@ func (c *Console) Close() error {
 	c.closeOnce.Do(func() {
 		close(c.done)
 		c.wg.Wait()
+		if c.inputDebugFile != nil {
+			c.inputDebugFile.Close()
+		}
 		if err := windows.SetConsoleMode(c.out, c.origOut); err != nil {
 			errs = append(errs, fmt.Errorf("restore output mode: %w", err))
 		}
@@ -419,6 +425,7 @@ func (c *Console) initInputDebug() {
 	if err != nil {
 		return
 	}
+	c.inputDebugFile = f
 	fmt.Fprintf(f, "vimterm input debug log started at %s\n", time.Now())
 	fmt.Fprintf(f, "log file: %s\n", f.Name())
 	f.Sync()
