@@ -56,9 +56,21 @@ func (a *App) deleteWord(dir int) {
 		row := rowOf(cells)
 		from, to := at, at
 		if dir > 0 {
-			to = wordStart(row.runes, at, 1, wordKindWord)
-			if to < 0 {
-				to = textEnd(row.runes) + 1
+			if at < len(row.runes) && wordChar(wordKindWord, row.runes[at]) {
+				end := at
+				for end < len(row.runes) && wordChar(wordKindWord, row.runes[end]) {
+					end++
+				}
+				te := textEnd(row.runes)
+				to = end
+				for to <= te && to < len(row.runes) && (row.runes[to] == ' ' || row.runes[to] == '\t') {
+					to++
+				}
+			} else {
+				to = wordStart(row.runes, at, 1, wordKindWord)
+				if to < 0 {
+					to = textEnd(row.runes) + 1
+				}
 			}
 		} else {
 			from = wordStart(row.runes, at, -1, wordKindWord)
