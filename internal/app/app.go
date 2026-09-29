@@ -110,6 +110,17 @@ type App struct {
 	curBlink  bool
 	lastInput time.Time
 
+	// pendingShell is the shell cursor position moveShellCursorToVirtual
+	// asked for, held until the emulator's cursor actually reports it. The
+	// arrow keys reach the shell asynchronously, so for a frame or more the
+	// emulator still reports the old position; rendering that would snap the
+	// host cursor back to where the previous insert left it and then forward
+	// again. pendingUntil bounds the wait so a shell that ignores the move
+	// (or never echoes) does not pin the cursor to a stale guess forever.
+	pendingShell selection.Pos
+	pendingUntil time.Time
+	pendingValid bool
+
 	// The open tabs. The focused tab's state is materialized into the
 	// corresponding App fields above (sess, emu, vp, search, cur, sel,
 	// ...); tabs[active] mirrors them while it is focused and preserves
@@ -729,6 +740,8 @@ func (a *App) renderFrame(frame *render.Frame) {
 		a.curValid = false
 		// Ghosts recorded on the other screen buffer are meaningless here.
 		a.trail.Reset()
+		// The predicted cursor belongs to the buffer we just left.
+		a.pendingValid = false
 	}
 
 	sbLen := a.emu.ScrollbackLen()
@@ -767,7 +780,7 @@ func (a *App) renderFrame(frame *render.Frame) {
 		}
 	}
 
-	cx, cy := a.emu.Cursor()
+	cx, cy := a.shellCursorPos()
 	frame.CursorX, frame.CursorY = cx, cy
 	// The host cursor is shown only in insert mode; normal and visual modes
 	// use the virtual cursor (drawn below). Prompts override this.
@@ -865,7 +878,7 @@ func (a *App) updateTrail(frame *render.Frame, rows int, now time.Time) {
 	}
 	top := a.topAbsLine()
 	if a.mods.Is(mode.ModeInsert) {
-		cx, cy := a.emu.Cursor()
+		cx, cy := a.shellCursorPos()
 		a.trail.Record(cx, top+cy, now)
 		// Debug: log trail state
 		if trailLog != nil {
@@ -1051,6 +1064,8 @@ func (a *App) resize(cols, rows int) {
 	// Buffer coordinates may have shifted; re-derive the cursor lazily.
 	a.curValid = false
 	a.trail.Reset()
+	// A prediction made before the resize refers to old coordinates.
+	a.pendingValid = false
 	if a.sel.Active {
 		a.syncCursor()
 		a.sel.Move(a.cur)

@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"time"
 
 	"vimterm/internal/console"
 	"vimterm/internal/emulator"
@@ -488,7 +489,55 @@ func (a *App) moveShellCursorToVirtual() bool {
 	if _, err := a.sess.Write(cursorMoveSeq(delta)); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 	}
+	// The arrow keys reach the shell's line editor asynchronously, so
+	// emu.Cursor() keeps reporting the old position until the echo comes
+	// back. Remember where the cursor is headed so the frames drawn in the
+	// meantime show the insert point instead of snapping back to the column
+	// the previous insert left. shellCursorPos prefers this while it holds.
+	a.expectShellCursor(a.cur)
 	return true
+}
+
+// shellCursorSettle bounds how long the predicted shell cursor position is
+// preferred over the emulator's. It only has to cover the echo round trip, so
+// it is generous for a loaded machine but short enough that a shell which
+// never honors the move falls back to the real cursor quickly.
+const shellCursorSettle = 150 * time.Millisecond
+
+// expectShellCursor records pos as the shell cursor's destination until the
+// emulator reports it (or shellCursorSettle expires). The emulator's cursor
+// only moves once the shell echoes, which is at least one frame away, so
+// without this the host cursor renders at the stale position and the user
+// sees it jump to the old insert column and back.
+func (a *App) expectShellCursor(pos selection.Pos) {
+	a.pendingShell = pos
+	a.pendingUntil = time.Now().Add(shellCursorSettle)
+	a.pendingValid = true
+}
+
+// shellCursorPos returns the shell cursor position to render and record,
+// preferring a pending destination over the emulator's stale report. The
+// prediction is dropped as soon as the emulator catches up, so a shell that
+// places the cursor exactly where it was asked costs nothing, and one that
+// disagrees is corrected as soon as its echo lands.
+func (a *App) shellCursorPos() (int, int) {
+	cx, cy := a.emu.Cursor()
+	if !a.pendingValid {
+		return cx, cy
+	}
+	if a.pendingShell.Col == cx && a.pendingShell.Line == a.emu.ScrollbackLen()+cy {
+		// The echo landed where it was asked to go; the emulator is now
+		// authoritative.
+		a.pendingValid = false
+		return cx, cy
+	}
+	if time.Now().After(a.pendingUntil) {
+		// The shell never confirmed the move (ignored the keys, or the
+		// command is not a line editor). Stop second-guessing it.
+		a.pendingValid = false
+		return cx, cy
+	}
+	return a.pendingShell.Col, a.pendingShell.Line - a.emu.ScrollbackLen()
 }
 
 // rowIsFullWidth reports whether the absolute buffer line fills the entire
