@@ -1,7 +1,9 @@
 package emulator
 
 import (
+	"io"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/vt"
 )
@@ -118,5 +120,128 @@ func TestDeleteLineCellsOutOfBoundsColIsNoop(t *testing.T) {
 	got := e.Cell(0, 0).Content
 	if got != "a" {
 		t.Fatalf("cell(0,0) = %q, want a (out-of-bounds col is noop)", got)
+	}
+}
+
+// TestRepliesUnblocksWriteOnCPR is the regression test for the terminal
+// freeze: a child asking "where is the cursor?" (CSI 6n) used to wedge Write
+// forever because nothing drained the reply pipe.
+func TestRepliesUnblocksWriteOnCPR(t *testing.T) {
+	e := New(80, 24)
+	defer e.Close()
+
+	replies := make(chan string, 4)
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			n, err := e.Replies().Read(buf)
+			if n > 0 {
+				replies <- string(buf[:n])
+			}
+			if err != nil {
+				close(replies)
+				return
+			}
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = e.Write([]byte("hello\x1b[6n"))
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Write blocked on CSI 6n: the reply pipe was never drained")
+	}
+
+	select {
+	case got := <-replies:
+		// "hello" leaves the cursor on row 1, column 6.
+		if want := "\x1b[1;6R"; got != want {
+			t.Errorf("CPR reply = %q, want %q", got, want)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no CPR reply was produced")
+	}
+}
+
+func TestRepliesEOFAfterClose(t *testing.T) {
+	e := New(80, 24)
+	r := e.Replies()
+	if err := e.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	buf := make([]byte, 64)
+	if _, err := r.Read(buf); err != io.EOF {
+		t.Fatalf("Read after Close = %v, want io.EOF", err)
+	}
+}
+
+// TestRepliesStreamsDeviceAttributes covers the other reply families: DA1
+// and in-band resize, both of which a real child (fzf, tmux) depends on.
+func TestRepliesStreamsDeviceAttributes(t *testing.T) {
+	e := New(80, 24)
+	defer e.Close()
+
+	got := readReply(t, e, "\x1b[c")
+	if got == "" {
+		t.Fatal("DA1 produced no reply")
+	}
+	if got[0] != 0x1b || got[1] != '[' || got[2] != '?' {
+		t.Errorf("DA1 reply = %q, want a CSI ? ... c report", got)
+	}
+}
+
+func TestRepliesInBandResize(t *testing.T) {
+	e := New(80, 24)
+	defer e.Close()
+
+	got := readReply(t, e, "\x1b[?2048h\x1b[8;50;100t")
+	if got == "" {
+		t.Fatal("in-band resize produced no reply")
+	}
+	if got[0] != 0x1b || got[1] != '[' {
+		t.Errorf("in-band resize reply = %q, want a CSI report", got)
+	}
+}
+
+// readReply feeds seq to the emulator with a reply reader running and returns
+// the first reply produced.
+func readReply(t *testing.T, e Emulator, seq string) string {
+	t.Helper()
+	ch := make(chan string, 4)
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			n, err := e.Replies().Read(buf)
+			if n > 0 {
+				ch <- string(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = e.Write([]byte(seq))
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Write blocked: reply pipe was never drained")
+	}
+
+	select {
+	case s := <-ch:
+		return s
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for a reply")
+		return ""
 	}
 }

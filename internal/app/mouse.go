@@ -94,7 +94,7 @@ func (a *App) mousePassthrough(e console.MouseEvent) {
 	}
 
 	mouseDebugLog("PASSTHROUGH: writing %d bytes: %q (hex: %x)", len(vt), string(vt), vt)
-	n, err := a.sess.Write(vt)
+	n, err := a.writeSess(a.sess, vt)
 	if err != nil {
 		mouseDebugLog("PASSTHROUGH: ERROR writing: %v", err)
 		a.setStatusMsg("mouse write error: " + err.Error())

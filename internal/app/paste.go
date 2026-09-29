@@ -47,7 +47,7 @@ func (a *App) paste(flip int) {
 		}
 	}
 	a.moveShellCursorToVirtual()
-	if _, err := a.sess.Write([]byte(strings.Repeat(text, n))); err != nil {
+	if _, err := a.writeSess(a.sess, []byte(strings.Repeat(text, n))); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 		return
 	}

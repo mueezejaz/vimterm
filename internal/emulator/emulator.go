@@ -4,6 +4,7 @@ package emulator
 
 import (
 	"image/color"
+	"io"
 	"sync"
 	"sync/atomic"
 
@@ -39,6 +40,18 @@ type Cell struct {
 type Emulator interface {
 	// Write feeds raw output (VT escape sequences) into the emulator.
 	Write(p []byte) (int, error)
+	// Replies returns a stream of the terminal's replies to device queries
+	// made by the child (CPR/DSR "where is the cursor", DA1/DA2 "what are
+	// you", in-band resize), which must be forwarded back to the child.
+	//
+	// The VT layer emits these while parsing, into an unbuffered pipe, so
+	// Write does not return until they are consumed: a caller that never
+	// reads Replies deadlocks the first time the child asks anything
+	// (PSReadLine's cursor probe, less, fzf, tmux), and the deadlock holds
+	// this package's lock, so the whole terminal stalls, not just the write.
+	//
+	// Reading returns io.EOF once Close is called.
+	Replies() io.Reader
 	// Resize changes the grid size.
 	Resize(cols, rows int)
 	// Cell returns the cell at column x, row y (0-based).
@@ -94,6 +107,15 @@ func (e *vtEmulator) Write(p []byte) (int, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.term.Write(p)
+}
+
+// Replies exposes the VT layer's reply stream. It deliberately takes no lock:
+// a reader blocks until the next reply is produced by a concurrent Write, so
+// holding e.mu here would deadlock against Write, and holding it across Read
+// would deadlock against Close, which is the only thing that unblocks a
+// parked reader.
+func (e *vtEmulator) Replies() io.Reader {
+	return e.term
 }
 
 func (e *vtEmulator) Resize(cols, rows int) {

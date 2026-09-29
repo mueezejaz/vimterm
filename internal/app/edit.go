@@ -159,7 +159,7 @@ func (a *App) propagateDelete(segs []delSeg) {
 	for i := 0; i < deleted; i++ {
 		seq = append(seq, 0x7F)
 	}
-	if _, err := a.sess.Write(seq); err != nil {
+	if _, err := a.writeSess(a.sess, seq); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 		return
 	}

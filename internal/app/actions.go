@@ -153,7 +153,7 @@ func (a *App) repeatLast() {
 	case unitShell:
 		for _, k := range u.keys {
 			if bytes := console.KeyToBytes(k); len(bytes) > 0 {
-				if _, err := a.sess.Write(bytes); err != nil {
+				if _, err := a.writeSess(a.sess, bytes); err != nil {
 					a.setStatusMsg("write error: " + err.Error())
 					return
 				}
@@ -486,7 +486,7 @@ func (a *App) moveShellCursorToVirtual() bool {
 	if delta == 0 {
 		return false
 	}
-	if _, err := a.sess.Write(cursorMoveSeq(delta)); err != nil {
+	if _, err := a.writeSess(a.sess, cursorMoveSeq(delta)); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 	}
 	// The arrow keys reach the shell's line editor asynchronously, so

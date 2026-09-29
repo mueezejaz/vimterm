@@ -53,6 +53,13 @@ type App struct {
 	quitOnce  sync.Once
 	stopWatch func()
 
+	// writeMu serializes every writer to a child session's input. The main
+	// loop writes from the keystroke, paste, mouse and delete-propagation
+	// paths, while each tab's reply forwarder writes from its own goroutine;
+	// without this a terminal reply could land in the middle of a key
+	// sequence and desynchronize a line editor.
+	writeMu sync.Mutex
+
 	// Macro recorder, repeat tracker, and custom commands (owned by the
 	// main loop goroutine).
 	macro     *macro.Recorder
@@ -232,6 +239,7 @@ func newApp(ctx context.Context, cfg *config.Config, configPath string) (*App, e
 	}
 	a.actions = a.actionMap()
 	a.startReader(t)
+	a.startReplies(t)
 	a.startWaiter(t)
 
 	// Hot-reload the config.
@@ -267,6 +275,17 @@ type session interface {
 	Close() error
 	Name() string
 	Wait(ctx context.Context) error
+}
+
+// writeSess writes input to a child session, serializing it against every
+// other writer (see App.writeMu) so replies never split a key sequence.
+func (a *App) writeSess(sess session, p []byte) (int, error) {
+	if sess == nil {
+		return 0, nil
+	}
+	a.writeMu.Lock()
+	defer a.writeMu.Unlock()
+	return sess.Write(p)
 }
 
 // spawnTab starts one shell session and builds its tab state around it.
@@ -337,6 +356,47 @@ func (a *App) restoreOnPanic() {
 	if r := recover(); r != nil {
 		a.cleanup()
 	}
+}
+
+// startReplies forwards the emulator's replies to device queries back to the
+// child: CPR/DSR ("where is the cursor"), DA1/DA2 ("what are you"), and
+// in-band resize notifications.
+//
+// The VT layer produces these while parsing, into an unbuffered pipe, so
+// emulator.Write does not return until they are consumed. Without this
+// forwarder the very first query the child sends - PSReadLine's cursor
+// probe on startup, less, fzf, tmux - blocks the reader goroutine inside
+// Write while it holds the emulator lock, which also stalls the render loop.
+// The whole terminal freezes until the child is killed.
+//
+// Like the reader and waiter, it captures the session and emulator at start
+// and is ended by closing the emulator, which unblocks Read with io.EOF;
+// every teardown path (closeTab, restartShell, cleanup) does exactly that.
+func (a *App) startReplies(t *tabState) {
+	sess := t.sess
+	emu := t.emu
+	if sess == nil || emu == nil {
+		return
+	}
+	go func() {
+		defer a.restoreOnPanic()
+		r := emu.Replies()
+		if r == nil {
+			return
+		}
+		buf := make([]byte, 4096)
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				if _, werr := a.writeSess(sess, buf[:n]); werr != nil {
+					return // the session is gone; stop forwarding
+				}
+			}
+			if err != nil {
+				return // io.EOF once the emulator is closed
+			}
+		}
+	}()
 }
 
 // startWaiter detects child process exit, honoring session generations.
@@ -718,7 +778,7 @@ func (a *App) passthrough(k keybind.Key) {
 	if len(bytes) == 0 {
 		return
 	}
-	if _, err := a.sess.Write(bytes); err != nil {
+	if _, err := a.writeSess(a.sess, bytes); err != nil {
 		a.setStatusMsg("write error: " + err.Error())
 	}
 }
@@ -1351,6 +1411,7 @@ func (a *App) restartShell() {
 	t.sb = a.scrollbackSize()
 	t.search = a.search
 	a.startReader(t)
+	a.startReplies(t)
 	a.startWaiter(t)
 	go func() {
 		defer a.restoreOnPanic()
