@@ -248,7 +248,7 @@ func TestHighlight(t *testing.T) {
 	}
 	s := New(nil)
 	s.SetQuery([]rune("ll"))
-	s.Highlight(row, 0)
+	s.Highlight(row, 0, emulator.Color{}, false)
 	if !row[2].Reverse || !row[3].Reverse {
 		t.Fatal("expected first occurrence highlighted")
 	}
@@ -267,12 +267,57 @@ func TestHighlightWideCells(t *testing.T) {
 	}
 	s := New(nil)
 	s.SetQuery([]rune("ab"))
-	s.Highlight(row, 0)
+	s.Highlight(row, 0, emulator.Color{}, false)
 	if !row[2].Reverse || !row[3].Reverse {
 		t.Fatal("match across continuation cell must highlight the real cells")
 	}
 	if row[0].Reverse || row[1].Reverse {
 		t.Fatal("wide char cells must not be highlighted")
+	}
+}
+
+// With a configured search color, matches are painted with that background
+// instead of the reverse attribute.
+func TestHighlightStyled(t *testing.T) {
+	row := []emulator.Cell{
+		{Content: "f", Width: 1},
+		{Content: "o", Width: 1},
+		{Content: "o", Width: 1},
+		{Content: " ", Width: 1},
+		{Content: "b", Width: 1},
+		{Content: "a", Width: 1},
+		{Content: "r", Width: 1},
+	}
+	bg := emulator.Color{R: 0x5f, G: 0x5f, B: 0x00}
+	s := New(nil)
+	s.SetQuery([]rune("bar"))
+	s.Highlight(row, 0, bg, true)
+	for i, c := range row {
+		if i >= 4 && i <= 6 {
+			if c.Bg != bg {
+				t.Errorf("cell %d not painted: %+v", i, c.Bg)
+			}
+			if c.Reverse {
+				t.Errorf("cell %d left reversed", i)
+			}
+			continue
+		}
+		if c.Bg != (emulator.Color{}) || c.Reverse {
+			t.Errorf("cell %d should not be highlighted: %+v", i, c)
+		}
+	}
+}
+
+// A styled highlight over an already-reversed cell must clear the reverse
+// attribute, or the host inverts the configured color away.
+func TestHighlightStyledClearsReverse(t *testing.T) {
+	row := []emulator.Cell{{Content: "x", Width: 1, Reverse: true}}
+	bg := emulator.Color{R: 1, G: 2, B: 3}
+	s := New(nil)
+	s.SetQuery([]rune("x"))
+	s.Highlight(row, 0, bg, true)
+	if row[0].Reverse || row[0].Bg != bg {
+		t.Errorf("cell = %+v, want bg %+v and no reverse", row[0], bg)
 	}
 }
 

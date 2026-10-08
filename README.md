@@ -67,10 +67,28 @@ clean = "leader+c"
 
 ### `[colors]`
 
-Status line colors, `#rrggbb`; empty string = terminal default.
+Every color is `#rrggbb`, and an empty string means "keep whatever the host terminal already uses" — so a config that sets nothing behaves exactly as before. Colors are reloaded live like the rest of the config.
 
-- `status_fg`
-- `status_bg`
+- `status_fg`, `status_bg` — status line
+- `fg`, `bg` — the terminal's default foreground and background
+- `selection` — visual selection background (default: reverse video)
+- `search` — search-match background (default: reverse video)
+- `cursor` — virtual cursor block color (default: inverts the cell it sits on)
+
+```toml
+[colors]
+fg = "#d7dae0"
+bg = "#1c1c1c"
+cursor = "#00ff87"
+selection = "#264f78"
+search = "#5f5f00"
+
+[colors.palette]
+red = "#e05561"
+green = "#8cc265"
+```
+
+`[colors.palette]` takes the 16 ANSI colors (`black`…`white`, plus `bright_black`…`bright_white`). These are written into the **host console's color table**, which is what actually renders your shell's colored output — set only the entries you care about and the rest keep the host terminal's. The original table is restored when vimterm exits.
 
 ### `[commands]`
 

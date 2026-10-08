@@ -89,6 +89,7 @@ const (
 var (
 	procReadConsoleInputW            = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReadConsoleInputW")
 	procGetConsoleScreenBufferInfoEx = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleScreenBufferInfoEx")
+	procSetConsoleScreenBufferInfoEx = windows.NewLazySystemDLL("kernel32.dll").NewProc("SetConsoleScreenBufferInfoEx")
 
 	// consoleDebugLog is a package-level debug logger for the console package.
 	// It logs to a temp file if VIMTERM_DEBUG_CONSOLE is set.
@@ -128,6 +129,13 @@ type Console struct {
 	// Windows Terminal and other VT-aware hosts.
 	vtIn    bool
 	vtState vtParser
+
+	// origColorInfo snapshots the host's color table and default text
+	// attributes at startup. Installing a user palette overwrites them, so
+	// Close restores this snapshot: the color table is global host state that
+	// outlives the process and must not be left mutated.
+	origColorInfo screenBufferInfoEx
+	haveColorInfo bool
 }
 
 // Init puts the host console into raw mode and returns a Console.
@@ -206,6 +214,17 @@ func Init() (*Console, error) {
 		c.initInputDebug()
 	}
 
+	// Snapshot the host palette so a user-configured one can be undone on
+	// Close. Best effort: hosts that refuse the query (headless, or a
+	// pseudoconsole that does not implement it) simply mean no palette
+	// support, which the caller reports as a failed SetPalette.
+	c.origColorInfo.cbSize = uint32(unsafe.Sizeof(c.origColorInfo))
+	r1, _, _ := procGetConsoleScreenBufferInfoEx.Call(
+		uintptr(c.out),
+		uintptr(unsafe.Pointer(&c.origColorInfo)),
+	)
+	c.haveColorInfo = r1 != 0
+
 	c.wg.Add(1)
 	go c.inputLoop()
 	if vtOk {
@@ -280,6 +299,106 @@ func colorrefToColor(c uint32) emulator.Color {
 	}
 }
 
+// colorToColorref converts an emulator.Color into a COLORREF (0x00bbggrr).
+func colorToColorref(c emulator.Color) uint32 {
+	return uint32(c.R) | uint32(c.G)<<8 | uint32(c.B)<<16
+}
+
+// SetColorTable installs table into the host console's 16-entry color table,
+// so every ANSI color the child emits is painted with the user's palette
+// rather than the host terminal's scheme. Entries whose Default flag is set
+// keep the host's existing color at that index, which lets a partial palette
+// override just a few indices.
+//
+// The table is host-global state; Close restores the snapshot taken in Init.
+func (c *Console) SetColorTable(table [16]emulator.Color) error {
+	return c.mutateScreenInfo(func(info *screenBufferInfoEx) {
+		for i, col := range table {
+			if col.Default {
+				continue
+			}
+			info.colorTable[i] = colorToColorref(col)
+		}
+	})
+}
+
+// SetDefaultColors repoints the host buffer's default text attributes, which is
+// how a terminal's default foreground and background are set. Each color is
+// resolved to a palette index: an exact match in palette wins, otherwise the
+// color is matched against the color table as installed (so a bg equal to a
+// palette entry the user just installed resolves to that index). A color equal
+// to the host's current default keeps the existing index, which is what makes
+// fg-only or bg-only configuration work.
+func (c *Console) SetDefaultColors(palette [16]emulator.Color, fg, bg emulator.Color) error {
+	return c.mutateScreenInfo(func(info *screenBufferInfoEx) {
+		resolve := func(want emulator.Color, curIdx uint32) uint32 {
+			if want.Default {
+				return curIdx
+			}
+			ref := colorToColorref(want)
+			for i, col := range info.colorTable {
+				if col == ref {
+					return uint32(i)
+				}
+			}
+			for i, col := range palette {
+				if col == want {
+					return uint32(i)
+				}
+			}
+			return curIdx
+		}
+		fgIdx := resolve(fg, uint32(info.wAttributes&0x0f))
+		bgIdx := resolve(bg, uint32(info.wAttributes>>4&0x0f))
+		info.wAttributes = uint16(fgIdx&0x0f) | uint16(bgIdx&0x0f)<<4
+	})
+}
+
+// RestoreColorInfo puts back the color table and default attributes captured
+// in Init. It is called from Close and is a no-op when the snapshot could not
+// be taken (in which case nothing was installed either).
+func (c *Console) RestoreColorInfo() error {
+	if !c.haveColorInfo {
+		return nil
+	}
+	info := c.origColorInfo
+	r1, _, err := procSetConsoleScreenBufferInfoEx.Call(
+		uintptr(c.out),
+		uintptr(unsafe.Pointer(&info)),
+	)
+	if r1 == 0 {
+		return fmt.Errorf("restore console colors: %w", err)
+	}
+	return nil
+}
+
+// mutateScreenInfo applies fn to a fresh copy of the host's extended screen
+// buffer info and writes it back. The Win32 API only offers whole-struct
+// get/set, so every color change has to round-trip the full structure; the
+// size/geometry fields must be preserved verbatim or the host console window
+// would be resized as a side effect of setting a color.
+func (c *Console) mutateScreenInfo(fn func(*screenBufferInfoEx)) error {
+	info := c.origColorInfo
+	info.cbSize = uint32(unsafe.Sizeof(info))
+	r1, _, _ := procGetConsoleScreenBufferInfoEx.Call(
+		uintptr(c.out),
+		uintptr(unsafe.Pointer(&info)),
+	)
+	if r1 == 0 {
+		return errors.New("console: GetConsoleScreenBufferInfoEx failed")
+	}
+	fn(&info)
+	r1, _, err := procSetConsoleScreenBufferInfoEx.Call(
+		uintptr(c.out),
+		uintptr(unsafe.Pointer(&info)),
+	)
+	if r1 == 0 {
+		return fmt.Errorf("console: SetConsoleScreenBufferInfoEx: %w", err)
+	}
+	consoleDebugLog("SetConsoleScreenBufferInfoEx ok attrs=0x%04x", info.wAttributes)
+	return nil
+}
+
 // Close restores the original console modes and stops the input loop.
 func (c *Console) Close() error {
 	var errs []error
@@ -291,6 +410,12 @@ func (c *Console) Close() error {
 		}
 		if err := windows.SetConsoleMode(c.out, c.origOut); err != nil {
 			errs = append(errs, fmt.Errorf("restore output mode: %w", err))
+		}
+		// Restore the palette before the input mode: the snapshot was taken
+		// while the console still had its original state, and this is the
+		// only host-global state vimterm mutates.
+		if err := c.RestoreColorInfo(); err != nil {
+			errs = append(errs, err)
 		}
 		if err := windows.SetConsoleMode(c.in, c.origIn); err != nil {
 			errs = append(errs, fmt.Errorf("restore input mode: %w", err))

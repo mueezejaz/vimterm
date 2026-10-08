@@ -580,6 +580,20 @@ func cursorBlockStyle(cell emulator.Cell, themeFg, themeBg emulator.Color) (fg, 
 	return bg, fg
 }
 
+// paintHighlight applies a configured highlight background to a cell. With no
+// configured color it falls back to the reverse attribute, which is how
+// selections and search matches were drawn before [colors] gained the
+// selection/search keys: it inherits whatever the host terminal uses, so it
+// stays correct on any host without vimterm knowing a palette.
+func paintHighlight(cell *emulator.Cell, col emulator.Color, styled bool) {
+	if !styled {
+		cell.Reverse = true
+		return
+	}
+	cell.Bg = col
+	cell.Reverse = false
+}
+
 // trailBlockGlyph maps a 2x2 sub-cell coverage mask (bit0 upper-left, bit1
 // upper-right, bit2 lower-left, bit3 lower-right) to the Unicode block glyph
 // that paints the covered quarters in the foreground color and leaves the

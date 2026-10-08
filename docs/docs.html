@@ -204,6 +204,7 @@
       <a href="#config-file">Config File</a>
       <a href="#general">General Options</a>
       <a href="#colors">Colors</a>
+      <ul><li><a href="#palette">Palette</a></li></ul>
       <a href="#custom-commands">Custom Commands</a>
       <h4>Keybindings</h4>
       <a href="#modes">Modes</a>
@@ -272,6 +273,15 @@ status_merge = "auto"
 [colors]
 status_fg = "#00ff87"
 status_bg = "#262335"
+fg = "#d7dae0"
+bg = "#1c1c1c"
+cursor = "#00ff87"
+selection = "#264f78"
+search = "#5f5f00"
+
+[colors.palette]
+red = "#e05561"
+green = "#8cc265"
 
 [commands]
 clean = "leader+c"
@@ -317,15 +327,37 @@ color = "#2dd4bf"
       </ul>
 
       <h2 id="colors">Colors</h2>
-      <p>Status line colors accept <code>#rrggbb</code> hex values. An empty string uses the terminal default.</p>
+      <p>Colors accept <code>#rrggbb</code> hex values. An empty string means &ldquo;keep whatever the host terminal already uses&rdquo;, so a config that sets nothing behaves exactly as before. Everything here reloads live.</p>
       <table>
         <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td><code>status_fg</code></td><td><code>""</code></td><td>Status line foreground color</td></tr>
           <tr><td><code>status_bg</code></td><td><code>""</code></td><td>Status line background color</td></tr>
+          <tr><td><code>fg</code></td><td><code>""</code></td><td>Terminal default foreground</td></tr>
+          <tr><td><code>bg</code></td><td><code>""</code></td><td>Terminal default background</td></tr>
+          <tr><td><code>selection</code></td><td><code>""</code></td><td>Visual selection background</td></tr>
+          <tr><td><code>search</code></td><td><code>""</code></td><td>Search-match background</td></tr>
+          <tr><td><code>cursor</code></td><td><code>""</code></td><td>Virtual cursor block color</td></tr>
         </tbody>
       </table>
-      <p>If both are unset, the defaults are fg=<code>{235,235,255}</code> bg=<code>{40,40,90}</code> (slate blue theme).</p>
+      <p><code>selection</code> and <code>search</code> fall back to the reverse-video attribute when unset, which inherits the host terminal&rsquo;s colors. <code>cursor</code> falls back to inverting the cell it sits on.</p>
+      <p>If both status colors are unset, the defaults are fg=<code>{235,235,255}</code> bg=<code>{40,40,90}</code> (slate blue theme).</p>
+
+      <h3 id="palette">Palette</h3>
+      <p><code>[colors.palette]</code> sets the 16 ANSI colors: <code>black</code>&hellip;<code>white</code> plus <code>bright_black</code>&hellip;<code>bright_white</code>.</p>
+      <pre><code>[colors]
+fg = "#d7dae0"
+bg = "#1c1c1c"
+cursor = "#00ff87"
+selection = "#264f78"
+search = "#5f5f00"
+
+[colors.palette]
+black = "#1c1c1c"
+red = "#e05561"
+green = "#8cc265"
+bright_white = "#e6e6e6"</code></pre>
+      <p>Because vimterm draws into a host console window, your shell&rsquo;s colored output is rendered by that host from the sequences vimterm emits &mdash; which is why the palette is written into the <em>host console&rsquo;s color table</em> rather than into vimterm&rsquo;s own frame. Set only the entries you want; the rest keep the host terminal&rsquo;s colors. The original table is snapshotted at startup and restored when vimterm exits.</p>
 
       <h2 id="custom-commands">Custom Commands</h2>
       <p>Map any colon-command name to a key sequence that is replayed through the keybinding engine:</p>

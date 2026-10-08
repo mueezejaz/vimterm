@@ -81,12 +81,26 @@ type App struct {
 	clipWrite func(string) error
 
 	// mouseAnchor is where a mouse drag began (from the preceding click).
-	mouseAnchor    selection.Pos
-	lastClickTime  time.Time // time of the last single click, for VT double-click detection
+	mouseAnchor   selection.Pos
+	lastClickTime time.Time // time of the last single click, for VT double-click detection
 
 	// Status line colors from config.
 	statusFg emulator.Color
 	statusBg emulator.Color
+
+	// Highlight colors from config, all guarded by cfgMu like the status
+	// colors. nil means the user did not configure one and the renderer falls
+	// back to the reverse-video attribute. Pointers rather than
+	// emulator.Color because the zero Color is a legitimate black and would
+	// otherwise be indistinguishable from "unset".
+	selColor    *emulator.Color
+	searchColor *emulator.Color
+	cursorColor *emulator.Color
+
+	// hostFg/hostBg are the configured default foreground and background;
+	// nil falls back to the host console's own colors (themeFg/themeBg).
+	hostFg *emulator.Color
+	hostBg *emulator.Color
 
 	// Host console default colors (from the console color table), used to
 	// draw the virtual cursor as a solid block that stays visible on search
@@ -452,17 +466,57 @@ func (a *App) applyConfig(cfg *config.Config) error {
 		seqs[name] = seq
 	}
 
-	// Status line colors.
-	statusFg, statusBg := defaultStatusFg, defaultStatusBg
-	if c, ok := config.ParseHexColor(cfg.Colors.StatusFg); ok {
-		statusFg = emulator.Color{R: c.R, G: c.G, B: c.B}
-	} else if cfg.Colors.StatusFg != "" {
-		return fmt.Errorf("config: colors: status_fg: invalid color %q", cfg.Colors.StatusFg)
+	// Colors. Every entry is validated the same way so a new color needs no
+	// new validation path, and a typo names the offending key.
+	parsed := make(map[string]emulator.Color, len(cfg.Colors.Fields()))
+	for _, f := range cfg.Colors.Fields() {
+		if f.Value == "" {
+			continue
+		}
+		c, ok := config.ParseHexColor(f.Value)
+		if !ok {
+			return fmt.Errorf("config: colors: %s: invalid color %q (want #RRGGBB)", f.Name, f.Value)
+		}
+		parsed[f.Name] = emulator.Color{R: c.R, G: c.G, B: c.B}
 	}
-	if c, ok := config.ParseHexColor(cfg.Colors.StatusBg); ok {
-		statusBg = emulator.Color{R: c.R, G: c.G, B: c.B}
-	} else if cfg.Colors.StatusBg != "" {
-		return fmt.Errorf("config: colors: status_bg: invalid color %q", cfg.Colors.StatusBg)
+	statusFg, statusBg := defaultStatusFg, defaultStatusBg
+	if c, ok := parsed["status_fg"]; ok {
+		statusFg = c
+	}
+	if c, ok := parsed["status_bg"]; ok {
+		statusBg = c
+	}
+	// The remaining highlights are optional. opt() matters: an absent color
+	// becomes a nil pointer, because the zero emulator.Color is a perfectly
+	// valid black and would otherwise read as "configured black".
+	opt := func(key string) *emulator.Color {
+		if c, ok := parsed[key]; ok {
+			return &c
+		}
+		return nil
+	}
+	selColor := opt("selection")
+	searchColor := opt("search")
+	cursorColor := opt("cursor")
+	hostFg := opt("fg")
+	hostBg := opt("bg")
+
+	// The palette goes into the host console's color table rather than into
+	// the frame: the child's ANSI-colored output is rendered by the host
+	// terminal from the sequences we emit, so only the host table can change
+	// it. Done before anything is committed so a rejecting host leaves the
+	// app's own colors untouched. An absent entry keeps the Default flag so it
+	// is never written over the host's own color.
+	palette := [16]emulator.Color{}
+	for i, name := range config.PaletteNames {
+		if c, ok := parsed["palette."+name]; ok {
+			palette[i] = c
+		} else {
+			palette[i] = emulator.Color{Default: true}
+		}
+	}
+	if err := a.applyHostColors(palette, hostFg, hostBg); err != nil {
+		return fmt.Errorf("config: colors: %w", err)
 	}
 
 	// Everything validated: commit the new state.
@@ -501,6 +555,8 @@ func (a *App) applyConfig(cfg *config.Config) error {
 	a.cfgMu.Lock()
 	a.cmdSeqs = seqs
 	a.statusFg, a.statusBg = statusFg, statusBg
+	a.selColor, a.searchColor, a.cursorColor = selColor, searchColor, cursorColor
+	a.hostFg, a.hostBg = hostFg, hostBg
 	a.cfg = cfg
 	a.cfgMu.Unlock()
 	a.dirty.Store(true)
@@ -512,6 +568,82 @@ func (a *App) statusStyle() (fg, bg emulator.Color) {
 	a.cfgMu.RLock()
 	defer a.cfgMu.RUnlock()
 	return a.statusFg, a.statusBg
+}
+
+// applyHostColors installs the configured palette and default colors into the
+// host console. It is a no-op unless the user actually configured one: the
+// default path must not touch host state at all, so a headless run or a test
+// with no console never reaches the Win32 calls.
+//
+// A host that cannot take the new colors is an error, not a silent no-op —
+// the user asked for a palette and silently getting the old one is worse than
+// a config error naming the problem.
+func (a *App) applyHostColors(palette [16]emulator.Color, fg, bg *emulator.Color) error {
+	hasPalette := false
+	for _, c := range palette {
+		if !c.Default {
+			hasPalette = true
+			break
+		}
+	}
+	if !hasPalette && fg == nil && bg == nil {
+		return nil
+	}
+	if a.con == nil {
+		return nil
+	}
+	if hasPalette {
+		if err := a.con.SetColorTable(palette); err != nil {
+			return fmt.Errorf("palette: %w", err)
+		}
+	}
+	if fg != nil || bg != nil {
+		var fgc, bgc emulator.Color
+		if fg != nil {
+			fgc = *fg
+		}
+		if bg != nil {
+			bgc = *bg
+		}
+		if err := a.con.SetDefaultColors(palette, fgc, bgc); err != nil {
+			return fmt.Errorf("fg/bg: %w", err)
+		}
+	}
+	return nil
+}
+
+// selectionColor returns the configured selection background and whether one
+// is set. When set is false the caller falls back to the reverse-video
+// attribute.
+func (a *App) selectionColor() (emulator.Color, bool) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	if a.selColor == nil {
+		return emulator.Color{}, false
+	}
+	return *a.selColor, true
+}
+
+// searchMatchColor returns the configured search-match background and whether
+// one is set.
+func (a *App) searchMatchColor() (emulator.Color, bool) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	if a.searchColor == nil {
+		return emulator.Color{}, false
+	}
+	return *a.searchColor, true
+}
+
+// cursorBlockColor returns the configured virtual cursor block foreground and
+// whether one is set.
+func (a *App) cursorBlockColor() (emulator.Color, bool) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	if a.cursorColor == nil {
+		return emulator.Color{}, false
+	}
+	return *a.cursorColor, true
 }
 
 // statusMergeMode returns the configured status_merge mode.
@@ -568,14 +700,22 @@ func (a *App) trailGlow() float64 {
 	return 0.0
 }
 
-// themeColors returns the host terminal's default foreground/background and
-// whether theme colors are available. The values are read through cfgMu to
-// follow the config-guarding convention, even though they are currently
-// set once before the main loop starts.
+// themeColors returns the terminal's default foreground/background and whether
+// they are known. A configured fg/bg wins over what the host console reported:
+// applyConfig installs those into the host buffer's default text attributes, so
+// they are what "terminal default" now means for the child's output too. The
+// values are read through cfgMu to follow the config-guarding convention.
 func (a *App) themeColors() (fg, bg emulator.Color, have bool) {
 	a.cfgMu.RLock()
 	defer a.cfgMu.RUnlock()
-	return a.themeFg, a.themeBg, a.haveTheme
+	fg, bg, have = a.themeFg, a.themeBg, a.haveTheme
+	if a.hostFg != nil {
+		fg, have = *a.hostFg, true
+	}
+	if a.hostBg != nil {
+		bg, have = *a.hostBg, true
+	}
+	return fg, bg, have
 }
 
 // customCommand returns the key sequence bound to a custom colon-command.
@@ -847,20 +987,23 @@ func (a *App) renderFrame(frame *render.Frame) {
 	frame.CursorVisible = a.mods.Is(mode.ModeInsert) && a.prompt == nil
 
 	// Search highlight: mark matches on the visible lines.
+	searchBg, searchStyled := a.searchMatchColor()
 	if len(a.search.Query()) > 0 {
 		for y := 0; y < rows; y++ {
 			absLine := viewportRowToAbsLine(y, bufBottom, offset, rows)
-			a.search.Highlight(frame.Cells[y], absLine)
+			a.search.Highlight(frame.Cells[y], absLine, searchBg, searchStyled)
 		}
 	}
 
-	// Visual selection: reverse the selected cells.
+	// Visual selection: tint the selected cells, or reverse them when no
+	// selection color is configured.
+	selBg, selStyled := a.selectionColor()
 	if a.sel.Active {
 		for y := 0; y < rows; y++ {
 			absLine := viewportRowToAbsLine(y, bufBottom, offset, rows)
 			for x := 0; x < cols; x++ {
 				if a.sel.Contains(selection.Pos{Line: absLine, Col: x}) {
-					frame.Cells[y][x].Reverse = true
+					paintHighlight(&frame.Cells[y][x], selBg, selStyled)
 				}
 			}
 		}
@@ -879,14 +1022,23 @@ func (a *App) renderFrame(frame *render.Frame) {
 			if a.cur.Line >= top && a.cur.Line <= top+rows-1 {
 				cell := &frame.Cells[a.cur.Line-top][a.cur.Col]
 				themeFg, themeBg, haveTheme := a.themeColors()
-				if haveTheme {
+				block, blockStyled := a.cursorBlockColor()
+				switch {
+				case blockStyled:
+					// A configured cursor paints the block glyph in its own
+					// color over the cell's own background, so the cursor reads
+					// the same on plain text and on a highlight.
+					cell.Fg = block
+					cell.Reverse = false
+					cell.Bold = true
+				case haveTheme:
 					// A solid block in the cell's inverted rendered colors: on a
 					// highlighted cell the cursor lands on the opposite color
 					// pair of the highlight instead of blending into it.
 					cell.Fg, cell.Bg = cursorBlockStyle(*cell, themeFg, themeBg)
 					cell.Reverse = false
 					cell.Bold = true
-				} else {
+				default:
 					cell.Reverse = true
 					cell.Bold = true
 				}

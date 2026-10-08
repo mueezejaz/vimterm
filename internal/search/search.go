@@ -153,9 +153,12 @@ func (s *Search) Prev(fromLine, fromCol int) (Match, bool) {
 	return Match{}, false
 }
 
-// Highlight marks every occurrence of the query in the given buffer line with
-// the reverse attribute.
-func (s *Search) Highlight(line []emulator.Cell, absLine int) {
+// Highlight marks every occurrence of the query in the given buffer line. When
+// styled is false the matches are marked with the reverse attribute, which
+// inherits whatever colors the host terminal uses; when it is true, bg is
+// painted as the match background instead, so the match stays legible over
+// colored output.
+func (s *Search) Highlight(line []emulator.Cell, absLine int, bg emulator.Color, styled bool) {
 	if len(s.query) == 0 {
 		return
 	}
@@ -189,7 +192,12 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int) {
 		for j, c := range line {
 			n := len([]rune(c.Content))
 			if runePos+n > idx && runePos < idx+len(low) {
-				line[j].Reverse = true
+				if styled {
+					line[j].Bg = bg
+					line[j].Reverse = false
+				} else {
+					line[j].Reverse = true
+				}
 			}
 			runePos += n
 		}

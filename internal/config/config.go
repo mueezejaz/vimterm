@@ -123,11 +123,121 @@ type CursorTrail struct {
 	Glow *float64 `toml:"glow"`
 }
 
+// Palette holds the 16 ANSI colors. vimterm installs them into the host
+// console's color table on startup and restores the original table on exit,
+// so a palette set here changes how the child's colored output looks. An
+// empty entry means "leave the host console's own color at that index alone".
+type Palette struct {
+	Black         string `toml:"black"`
+	Red           string `toml:"red"`
+	Green         string `toml:"green"`
+	Yellow        string `toml:"yellow"`
+	Blue          string `toml:"blue"`
+	Magenta       string `toml:"magenta"`
+	Cyan          string `toml:"cyan"`
+	White         string `toml:"white"`
+	BrightBlack   string `toml:"bright_black"`
+	BrightRed     string `toml:"bright_red"`
+	BrightGreen   string `toml:"bright_green"`
+	BrightYellow  string `toml:"bright_yellow"`
+	BrightBlue    string `toml:"bright_blue"`
+	BrightMagenta string `toml:"bright_magenta"`
+	BrightCyan    string `toml:"bright_cyan"`
+	BrightWhite   string `toml:"bright_white"`
+}
+
+// Names lists the palette fields in console color-table index order, paired
+// with their TOML key. Keeping this next to Palette is what makes
+// Fields able to report palette entries generically.
+var paletteNames = []struct {
+	name string
+	get  func(*Palette) string
+}{
+	{"black", func(p *Palette) string { return p.Black }},
+	{"red", func(p *Palette) string { return p.Red }},
+	{"green", func(p *Palette) string { return p.Green }},
+	{"yellow", func(p *Palette) string { return p.Yellow }},
+	{"blue", func(p *Palette) string { return p.Blue }},
+	{"magenta", func(p *Palette) string { return p.Magenta }},
+	{"cyan", func(p *Palette) string { return p.Cyan }},
+	{"white", func(p *Palette) string { return p.White }},
+	{"bright_black", func(p *Palette) string { return p.BrightBlack }},
+	{"bright_red", func(p *Palette) string { return p.BrightRed }},
+	{"bright_green", func(p *Palette) string { return p.BrightGreen }},
+	{"bright_yellow", func(p *Palette) string { return p.BrightYellow }},
+	{"bright_blue", func(p *Palette) string { return p.BrightBlue }},
+	{"bright_magenta", func(p *Palette) string { return p.BrightMagenta }},
+	{"bright_cyan", func(p *Palette) string { return p.BrightCyan }},
+	{"bright_white", func(p *Palette) string { return p.BrightWhite }},
+}
+
+// PaletteNames lists the 16 ANSI palette keys in console color-table index
+// order, so callers can zip a parsed palette against the table without
+// repeating the order.
+var PaletteNames = paletteNameList()
+
+func paletteNameList() []string {
+	names := make([]string, len(paletteNames))
+	for i, p := range paletteNames {
+		names[i] = p.name
+	}
+	return names
+}
+
 // Colors holds user-configurable color overrides. Empty strings mean the
 // terminal default.
 type Colors struct {
 	StatusFg string `toml:"status_fg"`
 	StatusBg string `toml:"status_bg"`
+
+	// Fg and Bg are the terminal's own default foreground and background.
+	// They are written into the host console's default text attributes, so
+	// every cell the child leaves at "terminal default" is painted in them.
+	Fg string `toml:"fg"`
+	Bg string `toml:"bg"`
+
+	// Selection tints the visual selection background. Unset falls back to
+	// the reverse-video attribute, which inherits the host's colors.
+	Selection string `toml:"selection"`
+
+	// Search tints search-match backgrounds. Unset falls back to the
+	// reverse-video attribute.
+	Search string `toml:"search"`
+
+	// Cursor is the virtual cursor block's foreground color, painted over the
+	// cell's own background. Unset keeps the cursor as an inversion of the
+	// cell's rendered colors.
+	Cursor string `toml:"cursor"`
+
+	// Palette overrides the 16 ANSI colors in the host console's color table.
+	Palette Palette `toml:"palette"`
+}
+
+// ColorField is one named color from the [colors] section.
+type ColorField struct {
+	// Name is the TOML key, used in validation errors.
+	Name string
+	// Value is the raw "#rrggbb" string, empty when unset.
+	Value string
+}
+
+// Fields returns every user-settable color as a name/value list in a stable
+// order. Callers validate them uniformly with ParseHexColor instead of
+// checking each field by hand, so a new color needs no new validation code.
+func (c Colors) Fields() []ColorField {
+	fields := []ColorField{
+		{"status_fg", c.StatusFg},
+		{"status_bg", c.StatusBg},
+		{"fg", c.Fg},
+		{"bg", c.Bg},
+		{"selection", c.Selection},
+		{"search", c.Search},
+		{"cursor", c.Cursor},
+	}
+	for _, p := range paletteNames {
+		fields = append(fields, ColorField{"palette." + p.name, p.get(&c.Palette)})
+	}
+	return fields
 }
 
 // Commands maps custom colon-command names to key sequences (in binding
@@ -319,9 +429,33 @@ func Load(path string) (*Config, error) {
 		Timeoutlen  *int     `toml:"timeoutlen"`
 		StatusMerge *string  `toml:"status_merge"`
 	}
+	type probePalette struct {
+		Black         *string `toml:"black"`
+		Red           *string `toml:"red"`
+		Green         *string `toml:"green"`
+		Yellow        *string `toml:"yellow"`
+		Blue          *string `toml:"blue"`
+		Magenta       *string `toml:"magenta"`
+		Cyan          *string `toml:"cyan"`
+		White         *string `toml:"white"`
+		BrightBlack   *string `toml:"bright_black"`
+		BrightRed     *string `toml:"bright_red"`
+		BrightGreen   *string `toml:"bright_green"`
+		BrightYellow  *string `toml:"bright_yellow"`
+		BrightBlue    *string `toml:"bright_blue"`
+		BrightMagenta *string `toml:"bright_magenta"`
+		BrightCyan    *string `toml:"bright_cyan"`
+		BrightWhite   *string `toml:"bright_white"`
+	}
 	type probeColors struct {
-		StatusFg *string `toml:"status_fg"`
-		StatusBg *string `toml:"status_bg"`
+		StatusFg  *string      `toml:"status_fg"`
+		StatusBg  *string      `toml:"status_bg"`
+		Fg        *string      `toml:"fg"`
+		Bg        *string      `toml:"bg"`
+		Selection *string      `toml:"selection"`
+		Search    *string      `toml:"search"`
+		Cursor    *string      `toml:"cursor"`
+		Palette   probePalette `toml:"palette"`
 	}
 	type probeCursorTrail struct {
 		Enabled      *bool    `toml:"enabled"`
@@ -375,6 +509,47 @@ func Load(path string) (*Config, error) {
 	}
 	if probe.Colors.StatusBg != nil {
 		cfg.Colors.StatusBg = *probe.Colors.StatusBg
+	}
+	if probe.Colors.Fg != nil {
+		cfg.Colors.Fg = *probe.Colors.Fg
+	}
+	if probe.Colors.Bg != nil {
+		cfg.Colors.Bg = *probe.Colors.Bg
+	}
+	if probe.Colors.Selection != nil {
+		cfg.Colors.Selection = *probe.Colors.Selection
+	}
+	if probe.Colors.Search != nil {
+		cfg.Colors.Search = *probe.Colors.Search
+	}
+	if probe.Colors.Cursor != nil {
+		cfg.Colors.Cursor = *probe.Colors.Cursor
+	}
+	// Palette entries merge by index: a partial [colors.palette] keeps the
+	// host console's colors for the indices it does not mention.
+	{
+		p := &probe.Colors.Palette
+		merge := func(dst *string, src *string) {
+			if src != nil {
+				*dst = *src
+			}
+		}
+		merge(&cfg.Colors.Palette.Black, p.Black)
+		merge(&cfg.Colors.Palette.Red, p.Red)
+		merge(&cfg.Colors.Palette.Green, p.Green)
+		merge(&cfg.Colors.Palette.Yellow, p.Yellow)
+		merge(&cfg.Colors.Palette.Blue, p.Blue)
+		merge(&cfg.Colors.Palette.Magenta, p.Magenta)
+		merge(&cfg.Colors.Palette.Cyan, p.Cyan)
+		merge(&cfg.Colors.Palette.White, p.White)
+		merge(&cfg.Colors.Palette.BrightBlack, p.BrightBlack)
+		merge(&cfg.Colors.Palette.BrightRed, p.BrightRed)
+		merge(&cfg.Colors.Palette.BrightGreen, p.BrightGreen)
+		merge(&cfg.Colors.Palette.BrightYellow, p.BrightYellow)
+		merge(&cfg.Colors.Palette.BrightBlue, p.BrightBlue)
+		merge(&cfg.Colors.Palette.BrightMagenta, p.BrightMagenta)
+		merge(&cfg.Colors.Palette.BrightCyan, p.BrightCyan)
+		merge(&cfg.Colors.Palette.BrightWhite, p.BrightWhite)
 	}
 	if probe.Keybindings.Normal != nil && len(*probe.Keybindings.Normal) > 0 {
 		merged := defaultNormalBindings()
@@ -571,6 +746,42 @@ status_merge = "auto"
 # Status line colors, "#rrggbb". Empty = terminal defaults.
 status_fg = ""
 status_bg = ""
+
+# Terminal colors. Everything here is optional: an empty value keeps whatever
+# the host terminal already uses, so a config that sets nothing looks exactly
+# like vimterm has always looked.
+#
+# fg / bg          the terminal's default foreground and background
+# selection        visual selection background (default: reverse video)
+# search           search-match background (default: reverse video)
+# cursor           virtual cursor block foreground (default: inverted cell)
+fg = ""
+bg = ""
+selection = ""
+search = ""
+cursor = ""
+
+# The 16 ANSI colors. vimterm installs these into the host console's color
+# table on startup and restores the original table on exit, so this is what
+# decides how your shell's colored output looks. Set only the entries you care
+# about; the rest keep the host terminal's colors.
+[colors.palette]
+# black = "#1c1c1c"
+# red = "#e05561"
+# green = "#8cc265"
+# yellow = "#d18f52"
+# blue = "#4aa5f0"
+# magenta = "#c162de"
+# cyan = "#42b3c2"
+# white = "#d7dae0"
+# bright_black = "#5d6673"
+# bright_red = "#ff616e"
+# bright_green = "#a5e075"
+# bright_yellow = "#f0a45d"
+# bright_blue = "#4dc4ff"
+# bright_magenta = "#de73ff"
+# bright_cyan = "#4cd1e0"
+# bright_white = "#e6e6e6"
 
 [commands]
 # Custom colon-commands: a name maps to a key sequence (binding token

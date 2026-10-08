@@ -213,7 +213,7 @@ func TestSearchWithRealShell(t *testing.T) {
 				row[x] = emu.Cell(x, m.Line-emu.ScrollbackLen())
 			}
 		}
-		s.Highlight(row, m.Line)
+		s.Highlight(row, m.Line, emulator.Color{}, false)
 		marked := 0
 		for _, c := range row {
 			if c.Reverse {
