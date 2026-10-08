@@ -249,9 +249,14 @@ cd vimterm
 go build -o vimterm.exe .</code></pre>
 
       <h2 id="usage">Usage</h2>
-      <pre><code>vimterm [options]
+      <pre><code>vimterm [options] [dir]
   -config path   path to config file (default: %APPDATA%\vimterm\config.toml)
-  -shell prog    shell program to launch (overrides config)</code></pre>
+  -shell prog    shell program to launch (overrides config)
+  -dir path      working directory for the shell (overrides config)
+
+  dir            working directory, as a positional argument</code></pre>
+      <p>The positional <code>dir</code> may appear before or after the flags. This is the conventional form for launchers that open a folder in a terminal &mdash; file managers, editors and scripts can pass the path directly, the way they already do for <code>cmd.exe</code>, <code>wt.exe</code> and <code>wezterm.exe</code>:</p>
+      <pre><code>vimterm.exe "C:\Users\me\projects"</code></pre>
       <p>Quit with <code>ctrl+q</code> or <code>:quit</code>.</p>
 
       <h2 id="config-file">Configuration</h2>
@@ -327,6 +332,10 @@ color = "#2dd4bf"
       <p>Every shell gets <code>TERM=xterm-256color</code> and <code>COLORTERM=truecolor</code>. The second one matters more than it looks: a great many tools (<code>bat</code>, <code>delta</code>, <code>fzf</code>, Starship and most prompt themes) decide between 16, 256 and 24-bit color by testing for <code>COLORTERM</code>, so without it the terminal renders truecolor that nothing downstream ever asks for.</p>
       <p><code>dir</code> and <code>env</code> apply to shells started <em>after</em> the config is reloaded, so edit them before opening a new tab or running <code>:shell</code>.</p>
       <p>Each tab&rsquo;s shell runs inside a Windows <a href="https://learn.microsoft.com/windows/win32/procthread/job-objects">Job Object</a> with <code>KILL_ON_JOB_CLOSE</code>. Closing a tab, restarting the shell, or quitting vimterm therefore takes down the shell and every process it started, instead of leaving orphans behind that keep running after you close the tab.</p>
+
+      <div class="callout">
+        <strong>Tip:</strong> To make vimterm a drop-in target for a launcher&rsquo;s &ldquo;open in terminal&rdquo; action, add it with args <code>"%s"</code>. The launcher substitutes the folder path, and vimterm uses it as the shell&rsquo;s working directory. A missing or non-directory path is reported on stderr before the terminal takes over the screen, rather than silently starting in the wrong place.
+      </div>
 
       <h3>Status merge modes</h3>
       <ul>

@@ -20,9 +20,20 @@ go build -o vimterm.exe .
 ## Usage
 
 ```
-vimterm [options]
+vimterm [options] [dir]
   -config path   path to config file (default: %APPDATA%\vimterm\config.toml)
   -shell prog    shell program to launch (overrides config)
+  -dir path      working directory for the shell (overrides config)
+
+  dir            working directory, as a positional argument
+```
+
+`dir` may be given before or after the flags, and is the conventional form for
+launchers that open a folder in a terminal — file managers, editors and scripts
+can all just pass the path:
+
+```
+vimterm.exe "C:\Users\me\projects"
 ```
 
 Quit with `ctrl+q` or `:quit`.
