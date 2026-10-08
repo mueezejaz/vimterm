@@ -613,6 +613,7 @@ glow = 0.3           # glow intensity (0.0-1.0), blends toward white</code></pre
         <li><strong>Keybinding engine</strong> — trie-based matcher with timeout for multi-key sequences</li>
         <li><strong>Search</strong> — incremental matching with highlight tracking across scrollback</li>
         <li><strong>Selection</strong> — character-wise and line-wise with clipboard integration via Win32 CF_UNICODETEXT</li>
+        <li><strong>Job Object</strong> — each tab&rsquo;s shell runs in a Windows Job Object with <code>KILL_ON_JOB_CLOSE</code>, so closing a tab tears down the whole process tree instead of orphaning the shell&rsquo;s children</li>
       </ul>
 
       <div class="callout">

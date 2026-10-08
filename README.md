@@ -65,6 +65,8 @@ clean = "leader+c"
 | `timeoutlen`| `1000`            | ms a partial key sequence (e.g. the first `g` of `gg`) waits for completion |
 | `status_merge`| `"auto"`      | Full-screen apps (nvim) get the full height; vimterm's status bar overlays their status line while a message shows. `"auto"` merges only when the bottom row looks like a status line, `"always"` unconditionally, `"never"` keeps the vimterm bar below the app |
 
+Each tab's shell runs inside a Windows Job Object, so closing a tab (or `:shell`, or quitting vimterm) takes down the shell and everything it started rather than leaving orphans behind.
+
 ### `[colors]`
 
 Every color is `#rrggbb`, and an empty string means "keep whatever the host terminal already uses" — so a config that sets nothing behaves exactly as before. Colors are reloaded live like the rest of the config.
