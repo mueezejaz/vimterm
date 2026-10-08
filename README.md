@@ -37,6 +37,8 @@ Example:
 [general]
 shell = "pwsh.exe"
 shell_args = ["-NoLogo"]
+dir = "C:\\Users\\me\\projects"
+env = { EDITOR = "code -w" }
 scrollback = 20000
 leader = "space"
 timeoutlen = 1000
@@ -60,12 +62,16 @@ clean = "leader+c"
 |-------------|-------------------|----------------------------------------------------------|
 | `shell`     | `"powershell.exe"`| Program launched inside the terminal                     |
 | `shell_args`| `[]`              | Extra arguments passed to the shell                      |
+| `dir`       | `""`              | Working directory shells start in (default: vimterm's own) |
+| `env`       | `{}`              | Extra environment variables for every shell, as `name = "value"` pairs |
 | `scrollback`| `10000`           | Max scrolled-off lines kept in memory                    |
 | `leader`    | `"space"`         | Leader key, used in bindings as the `leader` token       |
 | `timeoutlen`| `1000`            | ms a partial key sequence (e.g. the first `g` of `gg`) waits for completion |
 | `status_merge`| `"auto"`      | Full-screen apps (nvim) get the full height; vimterm's status bar overlays their status line while a message shows. `"auto"` merges only when the bottom row looks like a status line, `"always"` unconditionally, `"never"` keeps the vimterm bar below the app |
 
 Each tab's shell runs inside a Windows Job Object, so closing a tab (or `:shell`, or quitting vimterm) takes down the shell and everything it started rather than leaving orphans behind.
+
+vimterm exports `TERM=xterm-256color` and `COLORTERM=truecolor` to every shell, so tools that gate 24-bit color on `COLORTERM` actually emit it. `dir` and `env` apply to shells started from then on, so edit them before opening new tabs or running `:shell`.
 
 ### `[colors]`
 

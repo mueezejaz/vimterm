@@ -11,6 +11,7 @@ import (
 
 	"vimterm/internal/config"
 	"vimterm/internal/emulator"
+	"vimterm/internal/pty"
 )
 
 // rejectedCfg returns a config identical to the default except for a new
@@ -64,7 +65,7 @@ func TestApplyConfigAppliesScrollback(t *testing.T) {
 // under -race this fails unless both sides synchronize on cfgMu.
 func TestApplyConfigConcurrentWithTabSwitches(t *testing.T) {
 	old := spawnShell
-	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+	spawnShell = func(shell string, args []string, cols, rows int, env pty.Env) (session, error) {
 		return &fakeSession{}, nil
 	}
 	defer func() { spawnShell = old }()

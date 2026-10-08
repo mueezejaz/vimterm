@@ -6,6 +6,7 @@ package app
 // configured color must take over.
 
 import (
+	"sync"
 	"testing"
 
 	"vimterm/internal/config"
@@ -228,6 +229,72 @@ func TestConfiguredFgProvidesThemeWhenHostHasNone(t *testing.T) {
 	if !have || fg != rgb("#aaaaaa") {
 		t.Errorf("themeColors = fg %+v have=%v, want the configured fg", fg, have)
 	}
+}
+
+// shellEnv must report the configured dir and env through cfgMu, since
+// applyConfig runs on the watcher goroutine while the main loop spawns shells.
+func TestShellEnvReadsConfig(t *testing.T) {
+	a := realApp(t, 40, 6, "x\r\n")
+	cfg := config.Default()
+	cfg.General.Dir = `C:\work`
+	cfg.General.Env = map[string]string{"EDITOR": "code -w"}
+	if err := a.applyConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	env := a.shellEnv()
+	if env.Dir != `C:\work` {
+		t.Errorf("dir = %q", env.Dir)
+	}
+	if env.Vars["EDITOR"] != "code -w" {
+		t.Errorf("env = %+v", env.Vars)
+	}
+}
+
+// The default config must pass no dir and no env, so a shell keeps inheriting
+// vimterm's working directory and environment.
+func TestShellEnvEmptyByDefault(t *testing.T) {
+	a := realApp(t, 40, 6, "x\r\n")
+	if err := a.applyConfig(config.Default()); err != nil {
+		t.Fatal(err)
+	}
+	env := a.shellEnv()
+	if env.Dir != "" {
+		t.Errorf("dir = %q, want empty", env.Dir)
+	}
+	if len(env.Vars) != 0 {
+		t.Errorf("env = %+v, want empty", env.Vars)
+	}
+}
+
+// The watcher goroutine applies configs while the main loop reads shellEnv;
+// under -race this fails unless both sides go through cfgMu.
+func TestShellEnvConcurrentWithApplyConfig(t *testing.T) {
+	a := realApp(t, 40, 6, "x\r\n")
+	var wg sync.WaitGroup
+	wg.Add(2)
+	stop := make(chan struct{})
+	go func() {
+		defer wg.Done()
+		cfg := config.Default()
+		cfg.General.Dir = `C:\work`
+		cfg.General.Env = map[string]string{"A": "1"}
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = a.applyConfig(cfg)
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 500; i++ {
+			_ = a.shellEnv()
+		}
+		close(stop)
+	}()
+	wg.Wait()
 }
 
 // Status line colors keep working alongside the new keys: an unset status color

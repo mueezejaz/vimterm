@@ -14,6 +14,7 @@ import (
 	"vimterm/internal/keybind"
 	"vimterm/internal/macro"
 	"vimterm/internal/mode"
+	"vimterm/internal/pty"
 	"vimterm/internal/search"
 )
 
@@ -244,7 +245,7 @@ func TestApplyConfigOnLoadedTab(t *testing.T) {
 func TestNewTabFakeSpawn(t *testing.T) {
 	spawned := 0
 	old := spawnShell
-	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+	spawnShell = func(shell string, args []string, cols, rows int, env pty.Env) (session, error) {
 		spawned++
 		return &fakeSession{}, nil
 	}
@@ -264,7 +265,7 @@ func TestNewTabFakeSpawn(t *testing.T) {
 
 func TestNewTabViaLeaderNt(t *testing.T) {
 	old := spawnShell
-	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+	spawnShell = func(shell string, args []string, cols, rows int, env pty.Env) (session, error) {
 		return &fakeSession{}, nil
 	}
 	defer func() { spawnShell = old }()
@@ -290,7 +291,7 @@ func (eofSession) Wait(ctx context.Context) error { return nil }
 
 func TestNewTabStartsReaderAndWaiter(t *testing.T) {
 	old := spawnShell
-	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+	spawnShell = func(shell string, args []string, cols, rows int, env pty.Env) (session, error) {
 		return eofSession{}, nil
 	}
 	defer func() { spawnShell = old }()

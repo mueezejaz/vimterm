@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"vimterm/internal/pty"
 )
 
 // errSession returns one read error after release is closed, then EOF.
@@ -94,7 +96,7 @@ func TestReaderDropsErrorAfterGenBump(t *testing.T) {
 // deliberate restart cannot make the next exit look like a read failure.
 func TestRestartShellResetsTabError(t *testing.T) {
 	old := spawnShell
-	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+	spawnShell = func(shell string, args []string, cols, rows int, env pty.Env) (session, error) {
 		return &fakeSession{}, nil
 	}
 	defer func() { spawnShell = old }()

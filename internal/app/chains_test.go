@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"vimterm/internal/keybind"
+	"vimterm/internal/pty"
 )
 
 // The default leader+nt binding is the shipped chain ["new_tab",
@@ -12,7 +13,7 @@ import (
 
 func TestNewTabChainAsksForName(t *testing.T) {
 	old := spawnShell
-	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+	spawnShell = func(shell string, args []string, cols, rows int, env pty.Env) (session, error) {
 		return &fakeSession{}, nil
 	}
 	defer func() { spawnShell = old }()
@@ -42,7 +43,7 @@ func TestNewTabChainAsksForName(t *testing.T) {
 
 func TestNewTabChainEscLeavesUnnamed(t *testing.T) {
 	old := spawnShell
-	spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
+	spawnShell = func(shell string, args []string, cols, rows int, env pty.Env) (session, error) {
 		return &fakeSession{}, nil
 	}
 	defer func() { spawnShell = old }()

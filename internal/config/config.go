@@ -18,6 +18,13 @@ type General struct {
 	Shell string
 	// ShellArgs are extra arguments passed to the shell.
 	ShellArgs []string
+	// Dir is the working directory shells start in. Empty (the default)
+	// inherits vimterm's own working directory, which is where it was
+	// launched from.
+	Dir string `toml:"dir"`
+	// Env holds extra environment variables to set on every shell, as
+	// name/value pairs. These override inherited variables of the same name.
+	Env map[string]string `toml:"env"`
 	// Scrollback is the maximum number of scrolled-off lines kept in memory.
 	Scrollback int
 	// Leader is the config token for the leader key (e.g. "space").
@@ -259,6 +266,8 @@ func Default() *Config {
 		General: General{
 			Shell:       "powershell.exe",
 			ShellArgs:   []string{},
+			Dir:         "",
+			Env:         nil,
 			Scrollback:  10000,
 			Leader:      "space",
 			Timeoutlen:  1000,
@@ -422,12 +431,14 @@ func Load(path string) (*Config, error) {
 	// fields let us distinguish "section present in TOML" from "absent"
 	// and only apply defaults for truly absent ones.
 	type probeGeneral struct {
-		Shell       *string  `toml:"shell"`
-		ShellArgs   []string `toml:"shell_args"`
-		Scrollback  *int     `toml:"scrollback"`
-		Leader      *string  `toml:"leader"`
-		Timeoutlen  *int     `toml:"timeoutlen"`
-		StatusMerge *string  `toml:"status_merge"`
+		Shell       *string           `toml:"shell"`
+		ShellArgs   []string          `toml:"shell_args"`
+		Dir         *string           `toml:"dir"`
+		Env         map[string]string `toml:"env"`
+		Scrollback  *int              `toml:"scrollback"`
+		Leader      *string           `toml:"leader"`
+		Timeoutlen  *int              `toml:"timeoutlen"`
+		StatusMerge *string           `toml:"status_merge"`
 	}
 	type probePalette struct {
 		Black         *string `toml:"black"`
@@ -491,6 +502,12 @@ func Load(path string) (*Config, error) {
 	}
 	if probe.General.ShellArgs != nil {
 		cfg.General.ShellArgs = probe.General.ShellArgs
+	}
+	if probe.General.Dir != nil {
+		cfg.General.Dir = *probe.General.Dir
+	}
+	if probe.General.Env != nil {
+		cfg.General.Env = probe.General.Env
 	}
 	if probe.General.Scrollback != nil {
 		cfg.General.Scrollback = *probe.General.Scrollback
@@ -611,6 +628,13 @@ func Load(path string) (*Config, error) {
 	if cfg.General.Shell == "" {
 		cfg.General.Shell = "powershell.exe"
 	}
+	// An empty env name would produce a malformed "=value" entry; reject it
+	// rather than silently dropping it, so the typo is visible.
+	for k := range cfg.General.Env {
+		if k == "" {
+			return nil, fmt.Errorf("config: general: env: empty variable name")
+		}
+	}
 	if cfg.General.Scrollback < 0 {
 		cfg.General.Scrollback = 0
 	}
@@ -728,6 +752,13 @@ const defaultToml = `# vimterm configuration
 shell = "powershell.exe"
 # Extra arguments passed to the shell.
 shell_args = []
+# Working directory shells start in. Empty = vimterm's own working directory.
+dir = ""
+# Extra environment variables for every shell, as name/value pairs. These
+# override inherited variables of the same name.
+#   EDITOR = "code -w"
+#   MYVAR = "x"
+env = {}
 # Maximum number of scrollback lines kept in memory.
 scrollback = 10000
 # Leader key, usable in bindings as the "leader" token (e.g. "leader+t").

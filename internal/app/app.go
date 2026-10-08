@@ -18,6 +18,7 @@ import (
 	"vimterm/internal/keybind"
 	"vimterm/internal/macro"
 	"vimterm/internal/mode"
+	"vimterm/internal/pty"
 	"vimterm/internal/render"
 	"vimterm/internal/screen"
 	"vimterm/internal/search"
@@ -304,7 +305,7 @@ func (a *App) writeSess(sess session, p []byte) (int, error) {
 
 // spawnTab starts one shell session and builds its tab state around it.
 func (a *App) spawnTab(shell string, args []string, cols, rows int) (*tabState, error) {
-	sess, err := spawnShell(shell, args, cols, rows)
+	sess, err := spawnShell(shell, args, cols, rows, a.shellEnv())
 	if err != nil {
 		return nil, err
 	}
@@ -658,6 +659,15 @@ func (a *App) shellCommand() (string, []string) {
 	a.cfgMu.RLock()
 	defer a.cfgMu.RUnlock()
 	return a.cfg.General.Shell, a.cfg.General.ShellArgs
+}
+
+// shellEnv returns the configured working directory and environment overrides
+// for a new shell. Read through cfgMu because applyConfig runs on the watcher
+// goroutine.
+func (a *App) shellEnv() pty.Env {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return pty.Env{Vars: a.cfg.General.Env, Dir: a.cfg.General.Dir}
 }
 
 // scrollbackSize returns the configured scrollback line limit.
@@ -1529,7 +1539,7 @@ func (a *App) moveCursorTo(absLine, col int) {
 func (a *App) restartShell() {
 	cols, termRows := a.screenCols, terminalRows(a.screenRows)
 	shell, shellArgs := a.shellCommand()
-	sess, err := spawnShell(shell, shellArgs, cols, termRows)
+	sess, err := spawnShell(shell, shellArgs, cols, termRows, a.shellEnv())
 	if err != nil {
 		a.setStatusMsg("shell: " + err.Error())
 		return

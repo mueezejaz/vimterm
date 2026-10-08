@@ -30,8 +30,24 @@ type Session struct {
 	job windows.Handle
 }
 
+// Env holds the extra environment entries to set on the child, and Dir the
+// working directory to start it in. Both are optional: a zero Env means only
+// the terminal-identifying defaults below, and an empty Dir inherits the
+// current process's directory. Windows environment variables are
+// case-insensitive, so Env is merged with setEnv rather than appended.
+type Env struct {
+	Vars map[string]string
+	Dir  string
+}
+
 // Spawn starts a shell in a new ConPTY of the given size.
 func Spawn(program string, args []string, cols, rows int) (*Session, error) {
+	return SpawnWithEnv(program, args, cols, rows, Env{})
+}
+
+// SpawnWithEnv is Spawn with extra environment entries and a working
+// directory.
+func SpawnWithEnv(program string, args []string, cols, rows int, env Env) (*Session, error) {
 	if program == "" {
 		program = "powershell.exe"
 	}
@@ -55,7 +71,15 @@ func Spawn(program string, args []string, cols, rows int) (*Session, error) {
 	}
 
 	cmd := exec.Command(program, args...)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	// COLORTERM is the conventional signal that a terminal supports
+	// direct 24-bit color. Without it a great many tools (bat, delta,
+	// fzf, Starship, most prompt themes) silently drop to their 256-color
+	// or 16-color approximations, so the emulator's own ability to render
+	// truecolor never reaches the output.
+	cmd.Env = terminalEnv(env.Vars)
+	if env.Dir != "" {
+		cmd.Dir = env.Dir
+	}
 
 	if err := p.Start(cmd); err != nil {
 		p.Close()
@@ -219,6 +243,49 @@ func (s *Session) Close() error {
 // Name returns the child program name.
 func (s *Session) Name() string {
 	return s.cmd.Args[0]
+}
+
+// terminalEnv builds the child environment: the host's own variables, then
+// the entries identifying this as a truecolor terminal, then the user's
+// configured overrides last so they win.
+//
+// setEnv replaces an existing variable case-insensitively instead of appending,
+// because Windows treats environment names case-insensitively: appending
+// "Path=..." beside an inherited "PATH=..." leaves the child with two values
+// for one name, and which one wins is undefined.
+func terminalEnv(overrides map[string]string) []string {
+	env := os.Environ()
+	set := func(key, value string) {
+		env = setEnv(env, key, value)
+	}
+	set("TERM", "xterm-256color")
+	set("COLORTERM", "truecolor")
+	for k, v := range overrides {
+		if k == "" {
+			continue
+		}
+		set(k, v)
+	}
+	return env
+}
+
+// setEnv returns env with key set to value, replacing any existing entry whose
+// name matches case-insensitively. A key that is already present with that
+// exact value is left untouched so the slice does not grow needlessly.
+func setEnv(env []string, key, value string) []string {
+	entry := key + "=" + value
+	for i, kv := range env {
+		name, _, ok := strings.Cut(kv, "=")
+		if !ok || !strings.EqualFold(name, key) {
+			continue
+		}
+		if kv == entry {
+			return env
+		}
+		env[i] = entry
+		return env
+	}
+	return append(env, entry)
 }
 
 // wrapForUTF8 rewrites program/args so the child's console output code page

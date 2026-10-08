@@ -14,8 +14,8 @@ import (
 )
 
 // spawnShell spawns a shell session; a package variable so tests can fake it.
-var spawnShell = func(shell string, args []string, cols, rows int) (session, error) {
-	return pty.Spawn(shell, args, cols, rows)
+var spawnShell = func(shell string, args []string, cols, rows int, env pty.Env) (session, error) {
+	return pty.SpawnWithEnv(shell, args, cols, rows, env)
 }
 
 // tabState snapshots one open shell together with its per-session view

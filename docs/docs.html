@@ -265,6 +265,8 @@ go build -o vimterm.exe .</code></pre>
       <pre><code>[general]
 shell = "pwsh.exe"
 shell_args = ["-NoLogo"]
+dir = "C:\\Users\\me\\projects"
+env = { EDITOR = "code -w" }
 scrollback = 20000
 leader = "space"
 timeoutlen = 1000
@@ -312,12 +314,19 @@ color = "#2dd4bf"
         <tbody>
           <tr><td><code>shell</code></td><td><code>"powershell.exe"</code></td><td>Program launched inside the terminal</td></tr>
           <tr><td><code>shell_args</code></td><td><code>[]</code></td><td>Extra arguments passed to the shell</td></tr>
+          <tr><td><code>dir</code></td><td><code>""</code></td><td>Working directory shells start in (empty = vimterm&rsquo;s own)</td></tr>
+          <tr><td><code>env</code></td><td><code>{}</code></td><td>Extra environment variables for every shell; overrides inherited variables of the same name</td></tr>
           <tr><td><code>scrollback</code></td><td><code>10000</code></td><td>Max scrolled-off lines kept in memory</td></tr>
           <tr><td><code>leader</code></td><td><code>"space"</code></td><td>Leader key token for bindings (e.g. <code>"space"</code> → Space key)</td></tr>
           <tr><td><code>timeoutlen</code></td><td><code>1000</code></td><td>Milliseconds a partial key sequence waits before being discarded</td></tr>
           <tr><td><code>status_merge</code></td><td><code>"auto"</code></td><td>Full-screen app status bar merging: <code>"auto"</code>, <code>"always"</code>, or <code>"never"</code></td></tr>
         </tbody>
       </table>
+
+      <h3>Terminal identity and process containment</h3>
+      <p>Every shell gets <code>TERM=xterm-256color</code> and <code>COLORTERM=truecolor</code>. The second one matters more than it looks: a great many tools (<code>bat</code>, <code>delta</code>, <code>fzf</code>, Starship and most prompt themes) decide between 16, 256 and 24-bit color by testing for <code>COLORTERM</code>, so without it the terminal renders truecolor that nothing downstream ever asks for.</p>
+      <p><code>dir</code> and <code>env</code> apply to shells started <em>after</em> the config is reloaded, so edit them before opening a new tab or running <code>:shell</code>.</p>
+      <p>Each tab&rsquo;s shell runs inside a Windows <a href="https://learn.microsoft.com/windows/win32/procthread/job-objects">Job Object</a> with <code>KILL_ON_JOB_CLOSE</code>. Closing a tab, restarting the shell, or quitting vimterm therefore takes down the shell and every process it started, instead of leaving orphans behind that keep running after you close the tab.</p>
 
       <h3>Status merge modes</h3>
       <ul>

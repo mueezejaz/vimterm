@@ -102,6 +102,56 @@ func TestLoadEmptyColorsLeavesEverythingUnset(t *testing.T) {
 
 // Fields is the single validation surface for [colors]; it must expose every
 // settable color exactly once, in color-table order for the palette.
+// [general] dir and env are how a user controls where and how the shell starts;
+// both must survive the probe-merge that every new key has to be threaded
+// through.
+func TestLoadGeneralDirAndEnv(t *testing.T) {
+	cfg := loadBody(t, `
+[general]
+dir = 'C:\Users\me\projects'
+env = { EDITOR = "code -w", MYVAR = "x" }
+`)
+	if cfg.General.Dir != `C:\Users\me\projects` {
+		t.Errorf("dir = %q", cfg.General.Dir)
+	}
+	if cfg.General.Env["EDITOR"] != "code -w" || cfg.General.Env["MYVAR"] != "x" {
+		t.Errorf("env = %+v", cfg.General.Env)
+	}
+}
+
+// dir and env must default to unset so the shell inherits vimterm's working
+// directory and environment exactly as before.
+func TestLoadGeneralDirAndEnvDefaultUnset(t *testing.T) {
+	cfg := loadBody(t, "")
+	if cfg.General.Dir != "" {
+		t.Errorf("dir = %q, want empty", cfg.General.Dir)
+	}
+	if len(cfg.General.Env) != 0 {
+		t.Errorf("env = %+v, want empty", cfg.General.Env)
+	}
+}
+
+// An empty env variable name would produce a malformed "=value" entry in the
+// child environment, so it is rejected rather than silently dropped.
+func TestLoadGeneralEnvRejectsEmptyName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[general]\nenv = { \"\" = \"x\" }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load accepted an empty env variable name")
+	}
+}
+
+// The generated default config is where users discover these options.
+func TestDefaultTomlDocumentsDirAndEnv(t *testing.T) {
+	for _, key := range []string{"dir", "env"} {
+		if !containsLine(defaultToml, key+" = ") && !containsLine(defaultToml, "# "+key+" = ") {
+			t.Errorf("defaultToml does not document general.%s", key)
+		}
+	}
+}
+
 func TestColorsFieldsCoversEveryColor(t *testing.T) {
 	names := map[string]bool{}
 	all := Colors{}.Fields()
