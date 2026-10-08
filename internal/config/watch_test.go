@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -197,12 +198,16 @@ func TestWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The watcher polls on an interval, so the deadline has to absorb a loaded
+	// machine: several packages' integration tests spawn real shells in
+	// parallel, and a 5s budget was tight enough to fail intermittently
+	// under that load even though the reload itself takes ~50ms.
 	select {
 	case cfg := <-updates:
 		if cfg.Keybindings.Normal["h"] == nil || cfg.Keybindings.Normal["h"][0] != "quit" {
 			t.Fatalf("reloaded binding h = %q, want quit", cfg.Keybindings.Normal["h"])
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("watch did not report the config change")
 	}
 
@@ -216,6 +221,55 @@ func TestWatch(t *testing.T) {
 // A freshly started watcher must not report the file it was just seeded
 // from: the zero baselines used to fire a spurious "config reloaded" on
 // the first tick of every run.
+// The baseline must be captured synchronously, before Watch returns. When it
+// was seeded inside the watcher goroutine, a write landing between the call
+// and the goroutine's first scheduling was baselined as already-seen and never
+// reported -- exactly what a caller that writes the file right after starting
+// the watcher does.
+//
+// GOMAXPROCS=1 holds the watcher goroutine off the CPU for the whole write, so
+// the seeding goroutine cannot run until after it: with the baseline taken
+// inside the goroutine the change is guaranteed to be lost, and with the
+// synchronous seeding it is guaranteed to be seen.
+func TestWatchCatchesWriteBeforeFirstTick(t *testing.T) {
+	prev := runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(prev)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[general]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	updates := make(chan *Config, 4)
+	// A long interval means the ticker cannot be what delivers this; the only
+	// possible trigger is the stat comparison against the baseline.
+	stop := Watch(path, 50*time.Millisecond, func(cfg *Config, err error) {
+		if err == nil {
+			updates <- cfg
+		}
+	})
+	defer stop()
+
+	// With GOMAXPROCS=1 this goroutine keeps running, so the watcher goroutine
+	// created above cannot reach its first tick until the write is done.
+	for i := 0; i < 1000; i++ {
+		_ = i * i
+	}
+	if err := os.WriteFile(path, []byte("[keybindings.normal]\n\"h\" = \"quit\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case cfg := <-updates:
+		if cfg.Keybindings.Normal["h"] == nil || cfg.Keybindings.Normal["h"][0] != "quit" {
+			t.Fatalf("reloaded binding h = %q, want quit", cfg.Keybindings.Normal["h"])
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("watch missed a write made immediately after it started")
+	}
+}
+
 func TestWatchNoSpuriousInitialReload(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")

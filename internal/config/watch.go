@@ -11,11 +11,16 @@ import (
 // remains in effect). It returns a stop function.
 func Watch(path string, interval time.Duration, cb func(*Config, error)) func() {
 	stop := make(chan struct{})
+	// Seed from the file as it stands right now, synchronously, before the
+	// goroutine starts. The caller has just loaded and applied this config,
+	// so zero baselines would fire a spurious reload on the first tick; and
+	// seeding inside the goroutine would be worse than useless, because a
+	// write landing between this call and the goroutine's first scheduling
+	// would be baselined as already-seen and never reported. Callers write
+	// the file immediately after starting the watcher, so that window is
+	// routinely hit.
+	lastMod, lastSize := statFile(path)
 	go func() {
-		// Seed from the file as it stands right now: the caller has just
-		// loaded and applied it, and zero baselines would fire a spurious
-		// reload on the first tick.
-		lastMod, lastSize := statFile(path)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -35,16 +40,22 @@ func Watch(path string, interval time.Duration, cb func(*Config, error)) func() 
 				if size == 0 || newSize == 0 {
 					continue
 				}
-			if newMod.Equal(mod) && newSize == size {
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							fmt.Fprintf(os.Stderr, "warning: config reload panic: %v\n", r)
-						}
+				// Only deliver the config when the file did not change again
+				// while it was being read; otherwise the next tick picks up
+				// the newer content instead of an intermediate state.
+				if newMod.Equal(mod) && newSize == size {
+					// The callback runs on this goroutine and runs arbitrary
+					// user code (applyConfig), so a panic here must not take the
+					// watcher down with it.
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								fmt.Fprintf(os.Stderr, "warning: config reload panic: %v\n", r)
+							}
+						}()
+						cb(cfg, err)
 					}()
-					cb(cfg, err)
-				}()
-			}
+				}
 				lastMod, lastSize = newMod, newSize
 			}
 		}
