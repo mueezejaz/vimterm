@@ -16,7 +16,20 @@ var (
 	mouseLogOnce sync.Once
 )
 
+// mouseDebugEnabled reports whether the mouse/terminal debug log should be
+// written. It is off unless VIMTERM_DEBUG_MOUSE is set.
+//
+// The log has to stay opt-in: it is written from the VT mode callbacks, which
+// a full-screen TUI (opencode, any agent) fires tens of times per second for
+// DECSET/DECRST alone - its synchronized-output toggles alone were ~37/s. An
+// always-on log therefore meant a temp file, a formatted line and a disk flush
+// per mode change, on the reader goroutine while it held the emulator lock.
+var mouseDebugEnabled = os.Getenv("VIMTERM_DEBUG_MOUSE") != ""
+
 func mouseDebugLog(format string, args ...any) {
+	if !mouseDebugEnabled {
+		return
+	}
 	mouseLogOnce.Do(func() {
 		var err error
 		mouseLog, err = os.CreateTemp("", "vimterm-mouse-debug-*.log")
@@ -31,7 +44,6 @@ func mouseDebugLog(format string, args ...any) {
 		return
 	}
 	fmt.Fprintf(mouseLog, format+"\n", args...)
-	mouseLog.Sync()
 }
 
 // handleMouse routes console mouse events: when the child has enabled VT

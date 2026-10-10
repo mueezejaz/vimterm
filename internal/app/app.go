@@ -172,6 +172,15 @@ type App struct {
 	screenRows    int
 	r             *render.Renderer
 	trail         *cursortrail.Trail
+
+	// screenBuf and scrollRow are scratch buffers the render loop reuses
+	// across frames. They are owned by the main loop goroutine and hold no
+	// state that has to survive a frame, so they are not per-tab state.
+	// Allocating a fresh rows*cols cell grid every frame is ~0.5 MB at 60fps:
+	// pure GC pressure with nothing to show for it, and a full-screen TUI keeps
+	// the loop repainting, so the churn never stops.
+	screenBuf []emulator.Cell
+	scrollRow []emulator.Cell
 }
 
 // Run starts the application and blocks until it exits.
@@ -180,7 +189,8 @@ func Run(ctx context.Context, cfg *config.Config, configPath string) error {
 	if err != nil {
 		return err
 	}
-	// Log the debug log file path so the user can find it.
+	// Only meaningful when the mouse debug log is enabled; the log path is
+	// surfaced on the status bar once it exists.
 	mouseDebugLog("vimterm started, mouse debug log active")
 	defer a.cleanup()
 	// Restore the console before letting a panic propagate: leaving the
@@ -960,10 +970,13 @@ func (a *App) renderFrame(frame *render.Frame) {
 	rows, cols := a.emu.Height(), a.emu.Width()
 	bufBottom := sbLen + rows - 1
 
-	// Batch-read the live screen cells under a single emulator lock.
-	screenBuf := make([]emulator.Cell, rows*cols)
+	// Batch-read the live screen cells under a single emulator lock, into a
+	// buffer that is reused across frames.
 	if rows > 0 && cols > 0 {
-		a.emu.ReadCells(0, 0, cols, rows, screenBuf)
+		if n := rows * cols; len(a.screenBuf) < n {
+			a.screenBuf = make([]emulator.Cell, n)
+		}
+		a.emu.ReadCells(0, 0, cols, rows, a.screenBuf[:rows*cols])
 	}
 	var sbRow []emulator.Cell
 	var sbRowLine int = -1
@@ -978,13 +991,16 @@ func (a *App) renderFrame(frame *render.Frame) {
 			case absLine < sbLen:
 				// Cache scrollback row reads (one lock per visible line).
 				if absLine != sbRowLine {
-					sbRow = make([]emulator.Cell, cols)
+					if len(a.scrollRow) < cols {
+						a.scrollRow = make([]emulator.Cell, cols)
+					}
+					sbRow = a.scrollRow[:cols]
 					a.emu.ReadScrollbackCells(0, absLine, cols, sbRow)
 					sbRowLine = absLine
 				}
 				c = sbRow[x]
 			default:
-				c = screenBuf[(absLine-sbLen)*cols+x]
+				c = a.screenBuf[(absLine-sbLen)*cols+x]
 			}
 			frame.Cells[y][x] = c
 		}
