@@ -78,6 +78,11 @@ type Renderer struct {
 	prevCX  int
 	prevCY  int
 	prevVis bool
+
+	// sb is the output buffer, reused across draws. The string handed to
+	// io.WriteString is consumed synchronously before the next draw resets
+	// it, so aliasing the builder's backing array is safe.
+	sb strings.Builder
 }
 
 // New returns a Renderer that has not drawn anything yet.
@@ -94,7 +99,8 @@ func (r *Renderer) Draw(w io.Writer, f *Frame) {
 		r.prev = nil
 	}
 
-	var sb strings.Builder
+	sb := &r.sb
+	sb.Reset()
 	sb.Grow(f.Cols*f.Rows + f.Rows*8 + 32)
 	sb.WriteString(escHideCursor)
 
@@ -115,7 +121,7 @@ func (r *Renderer) Draw(w io.Writer, f *Frame) {
 				from--
 			}
 		}
-		drawRow(&sb, row, old, oldDrawn, y, from, f.Cols)
+		drawRow(sb, row, old, oldDrawn, y, from, f.Cols)
 	}
 
 	if f.CursorVisible {

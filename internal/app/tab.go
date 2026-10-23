@@ -54,14 +54,18 @@ type tabState struct {
 
 	// gen guards this tab's reader/waiter goroutines across :shell
 	// restarts; done is closed by the current generation when the session
-	// ends; err holds the read error, if any. outBytes counts every byte
-	// the reader fed into the emulator; it is the monotonic generation
-	// search.Refresh keys its cache on (buffer line counts stop changing
-	// once scrollback saturates and would leave matches drifting).
+	// ends; err holds the read error, if any. err is cleared in place by
+	// restartShell: reassigning the whole field would race a superseded
+	// reader that already passed its generation check and is about to store,
+	// planting the dead session's teardown error on the new session.
+	// outBytes counts every byte the reader fed into the emulator; it is the
+	// monotonic generation search.Refresh keys its cache on (buffer line
+	// counts stop changing once scrollback saturates and would leave matches
+	// drifting).
 	gen      atomic.Int64
 	done     chan struct{}
 	doneOnce sync.Once
-	err      atomic.Value
+	err      atomic.Pointer[error]
 	outBytes atomic.Int64
 }
 
@@ -213,8 +217,8 @@ func (a *App) reapTabs() {
 		t := a.tabs[i]
 		select {
 		case <-t.done:
-			if e, ok := t.err.Load().(error); ok && e != nil {
-				a.err.Store(e)
+			if p := t.err.Load(); p != nil && *p != nil {
+				a.err.Store(*p)
 			}
 			a.closeTab(i)
 			i-- // reconsider this index after removal

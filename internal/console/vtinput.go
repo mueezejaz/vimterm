@@ -383,13 +383,13 @@ func ctrlKeyEvent(b byte) KeyEvent {
 	case 0x1b:
 		return KeyEvent{Key: keybind.NewCode(keybind.CodeEsc, 0)}
 	default:
-		if b <= 0x1a {
-			// Ctrl+letter: 0x01=C-A, 0x02=C-B, … 0x1a=C-Z
-			return KeyEvent{Key: keybind.NewRune(rune('a')+rune(b-1), keybind.ModCtrl)}
-		}
 		if b == 0x00 {
 			// Ctrl+Space
 			return KeyEvent{Key: keybind.NewRune(' ', keybind.ModCtrl)}
+		}
+		if b <= 0x1a {
+			// Ctrl+letter: 0x01=C-A, 0x02=C-B, … 0x1a=C-Z
+			return KeyEvent{Key: keybind.NewRune(rune('a')+rune(b-1), keybind.ModCtrl)}
 		}
 		return KeyEvent{Key: keybind.NewRune(rune(b), 0)}
 	}

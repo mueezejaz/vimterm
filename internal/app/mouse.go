@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"vimterm/internal/console"
 	"vimterm/internal/mode"
@@ -193,8 +194,10 @@ func (a *App) mouseWordSelect(pos selection.Pos) {
 		if x < 0 || x >= len(cells) {
 			return false
 		}
-		rs := []rune(cells[x].Content)
-		return len(rs) > 0 && wordChar(wordKindWord, rs[0])
+		// Only the cell's first rune decides, and decoding just it avoids a
+		// []rune allocation per probed cell.
+		r, size := utf8.DecodeRuneInString(cells[x].Content)
+		return size > 0 && wordChar(wordKindWord, r)
 	}
 	if !isWord(pos.Col) {
 		a.mouseClick(pos)

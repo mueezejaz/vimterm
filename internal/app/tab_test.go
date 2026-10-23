@@ -215,7 +215,7 @@ func TestReapTabsRemovesExitedBackgroundTab(t *testing.T) {
 func TestReapTabsPropagatesReadErrorAndQuits(t *testing.T) {
 	a := newTabTestApp(t, 1)
 	tt := a.tabs[0]
-	tt.err.Store(errors.New("boom"))
+	tt.err.Store(ptrError(errors.New("boom")))
 	tt.doneOnce.Do(func() { close(tt.done) })
 	a.reapTabs()
 	err := a.childError()

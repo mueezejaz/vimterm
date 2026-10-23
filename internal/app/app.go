@@ -155,7 +155,7 @@ type App struct {
 	// returned from Run after the last tab closes.
 	err atomic.Value
 
-	statusMu    sync.Mutex
+	statusMu    sync.RWMutex
 	statusMsg_  string
 	statusSetAt time.Time
 
@@ -181,6 +181,9 @@ type App struct {
 	// the loop repainting, so the churn never stops.
 	screenBuf []emulator.Cell
 	scrollRow []emulator.Cell
+
+	// lineScratch backs bufferLineCells (main-loop owned; see there).
+	lineScratch []emulator.Cell
 }
 
 // Run starts the application and blocks until it exits.
@@ -364,7 +367,7 @@ func (a *App) startReader(t *tabState) {
 				// poison t.err nor signal this tab's exit.
 				if gen == t.gen.Load() {
 					if err != io.EOF {
-						t.err.Store(err)
+						t.err.Store(&err)
 					}
 					t.doneOnce.Do(func() { close(t.done) })
 				}
@@ -981,28 +984,38 @@ func (a *App) renderFrame(frame *render.Frame) {
 	var sbRow []emulator.Cell
 	var sbRowLine int = -1
 
-	for y := 0; y < rows; y++ {
-		absLine := viewportRowToAbsLine(y, bufBottom, offset, rows)
-		for x := 0; x < cols; x++ {
-			var c emulator.Cell
-			switch {
-			case absLine < 0:
-				c = emulator.Cell{Content: " ", Width: 1}
-			case absLine < sbLen:
-				// Cache scrollback row reads (one lock per visible line).
-				if absLine != sbRowLine {
-					if len(a.scrollRow) < cols {
-						a.scrollRow = make([]emulator.Cell, cols)
+	if offset == 0 {
+		// View pinned to the live screen: every visible row maps
+		// contiguously onto screenBuf, so bulk-copy rows instead of paying
+		// the per-cell switch below. This is the steady-state case (normal
+		// typing, full-screen TUIs).
+		for y := 0; y < rows; y++ {
+			copy(frame.Cells[y], a.screenBuf[y*cols:(y+1)*cols])
+		}
+	} else {
+		for y := 0; y < rows; y++ {
+			absLine := viewportRowToAbsLine(y, bufBottom, offset, rows)
+			for x := 0; x < cols; x++ {
+				var c emulator.Cell
+				switch {
+				case absLine < 0:
+					c = emulator.Cell{Content: " ", Width: 1}
+				case absLine < sbLen:
+					// Cache scrollback row reads (one lock per visible line).
+					if absLine != sbRowLine {
+						if len(a.scrollRow) < cols {
+							a.scrollRow = make([]emulator.Cell, cols)
+						}
+						sbRow = a.scrollRow[:cols]
+						a.emu.ReadScrollbackCells(0, absLine, cols, sbRow)
+						sbRowLine = absLine
 					}
-					sbRow = a.scrollRow[:cols]
-					a.emu.ReadScrollbackCells(0, absLine, cols, sbRow)
-					sbRowLine = absLine
+					c = sbRow[x]
+				default:
+					c = a.screenBuf[(absLine-sbLen)*cols+x]
 				}
-				c = sbRow[x]
-			default:
-				c = a.screenBuf[(absLine-sbLen)*cols+x]
+				frame.Cells[y][x] = c
 			}
-			frame.Cells[y][x] = c
 		}
 	}
 
@@ -1022,15 +1035,34 @@ func (a *App) renderFrame(frame *render.Frame) {
 	}
 
 	// Visual selection: tint the selected cells, or reverse them when no
-	// selection color is configured.
+	// selection color is configured. The selection is a rectangle in buffer
+	// coordinates, so paint per-row column ranges instead of testing every
+	// cell with Contains (which recomputed Start/End per cell).
 	selBg, selStyled := a.selectionColor()
 	if a.sel.Active {
+		selStart, selEnd := a.sel.Start(), a.sel.End()
 		for y := 0; y < rows; y++ {
 			absLine := viewportRowToAbsLine(y, bufBottom, offset, rows)
-			for x := 0; x < cols; x++ {
-				if a.sel.Contains(selection.Pos{Line: absLine, Col: x}) {
-					paintHighlight(&frame.Cells[y][x], selBg, selStyled)
+			if absLine < selStart.Line || absLine > selEnd.Line {
+				continue
+			}
+			from, to := 0, cols-1
+			if !a.sel.LineWise {
+				if absLine == selStart.Line {
+					from = selStart.Col
 				}
+				if absLine == selEnd.Line {
+					to = selEnd.Col
+				}
+			}
+			if from < 0 {
+				from = 0
+			}
+			if to >= cols {
+				to = cols - 1
+			}
+			for x := from; x <= to; x++ {
+				paintHighlight(&frame.Cells[y][x], selBg, selStyled)
 			}
 		}
 	}
@@ -1367,8 +1399,8 @@ func (a *App) setStatusMsg(msg string) {
 // statusMsg returns the current transient status message, or "" once it is
 // older than a few seconds.
 func (a *App) statusMsg() string {
-	a.statusMu.Lock()
-	defer a.statusMu.Unlock()
+	a.statusMu.RLock()
+	defer a.statusMu.RUnlock()
 	if a.statusMsg_ == "" || time.Since(a.statusSetAt) > 4*time.Second {
 		return ""
 	}
@@ -1426,7 +1458,11 @@ func (a *App) searchGeneration() int {
 }
 
 // bufferLineCells returns the cells of one absolute buffer line, or nil when
-// the line does not exist.
+// the line does not exist. The slice aliases lineScratch, a buffer reused
+// across calls (main-loop owned, like screenBuf/scrollRow): consume the
+// result before the next call. Reading a whole row via the batch APIs takes
+// one emulator lock per line; the per-cell Cell accessors took one per cell,
+// which made a full-buffer search scan lock the emulator once per cell.
 func (a *App) bufferLineCells(absLine int) []emulator.Cell {
 	sbLen := a.emu.ScrollbackLen()
 	rows := a.emu.Height()
@@ -1434,13 +1470,14 @@ func (a *App) bufferLineCells(absLine int) []emulator.Cell {
 		return nil
 	}
 	cols := a.emu.Width()
-	cells := make([]emulator.Cell, 0, cols)
-	for x := 0; x < cols; x++ {
-		if absLine < sbLen {
-			cells = append(cells, a.emu.ScrollbackCell(x, absLine))
-		} else {
-			cells = append(cells, a.emu.Cell(x, absLine-sbLen))
-		}
+	if len(a.lineScratch) < cols {
+		a.lineScratch = make([]emulator.Cell, cols)
+	}
+	cells := a.lineScratch[:cols]
+	if absLine < sbLen {
+		a.emu.ReadScrollbackCells(0, absLine, cols, cells)
+	} else {
+		a.emu.ReadCells(0, absLine-sbLen, cols, 1, cells)
 	}
 	return cells
 }
@@ -1562,7 +1599,7 @@ func (a *App) restartShell() {
 	}
 	t := a.tabs[a.active]
 	t.gen.Add(1)
-	t.err = atomic.Value{} // drop the old session's read error, if any
+	t.err.Store(nil) // drop the old session's read error, if any
 	old := t.sess
 	oldEmu := t.emu
 	emu := emulator.New(cols, termRows)

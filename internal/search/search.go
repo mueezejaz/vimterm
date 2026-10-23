@@ -31,6 +31,12 @@ type Search struct {
 	lowQuery []rune
 	lineBuf  []rune
 	lowerBuf []rune
+
+	// scanRunes/scanCols flatten one line during recompute; cellStart is
+	// Highlight's rune-index-of-cell-start table. All reused across calls.
+	scanRunes []rune
+	scanCols  []int
+	cellStart []int
 }
 
 // New creates a Search over the given line provider.
@@ -73,7 +79,7 @@ func (s *Search) SetQueryGen(q []rune, gen int) {
 // unchanged query; without the generation check each step would rescan the
 // whole buffer, making a counted search quadratic.
 func (s *Search) Refresh(q []rune, gen int) {
-	if gen == s.gen && string(q) == string(s.query) {
+	if gen == s.gen && equalRunes(q, s.query) {
 		return
 	}
 	s.query = q
@@ -81,7 +87,7 @@ func (s *Search) Refresh(q []rune, gen int) {
 }
 
 func (s *Search) recompute(gen int) {
-	s.matches = nil
+	s.matches = s.matches[:0]
 	s.gen = gen
 	if len(s.query) == 0 || s.line == nil {
 		return
@@ -96,21 +102,22 @@ func (s *Search) recompute(gen int) {
 		}
 		// Flatten the cell row into runes, remembering the cell column each
 		// rune starts at. Wide characters occupy two cells but contribute one
-		// rune, so rune indices do not map 1:1 to columns.
-		runes := make([]rune, 0, len(cells))
-		runeCol := make([]int, 0, len(cells))
+		// rune, so rune indices do not map 1:1 to columns. Ranging over the
+		// string decodes runes without allocating a []rune per cell.
+		s.scanRunes = s.scanRunes[:0]
+		s.scanCols = s.scanCols[:0]
 		col := 0
 		for _, c := range cells {
-			for _, r := range []rune(c.Content) {
-				runes = append(runes, r)
-				runeCol = append(runeCol, col)
+			for _, r := range c.Content {
+				s.scanRunes = append(s.scanRunes, r)
+				s.scanCols = append(s.scanCols, col)
 			}
 			col += c.Width
 		}
-		if len(runes) == 0 {
+		if len(s.scanRunes) == 0 {
 			continue
 		}
-		s.lowerBuf = lowerInto(s.lowerBuf[:0], runes)
+		s.lowerBuf = lowerInto(s.lowerBuf[:0], s.scanRunes)
 		text := s.lowerBuf
 		// Collect every occurrence, not just the first: navigation must
 		// reach same-line duplicates that Highlight shows.
@@ -119,7 +126,7 @@ func (s *Search) recompute(gen int) {
 			if idx < 0 {
 				break
 			}
-			s.matches = append(s.matches, Match{Line: l, Col: runeCol[idx]})
+			s.matches = append(s.matches, Match{Line: l, Col: s.scanCols[idx]})
 			from = idx + len(low)
 		}
 	}
@@ -162,15 +169,16 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int, bg emulator.Color,
 	if len(s.query) == 0 {
 		return
 	}
-	// Reuse the pre-lowered query buffer.
-	if len(s.lowQuery) != len(s.query) || !equalRunes(s.lowQuery, lowerInto(nil, s.query)) {
-		s.lowQuery = lowerInto(s.lowQuery[:0], s.query)
-	}
+	s.lowQuery = lowerInto(s.lowQuery[:0], s.query)
 	low := s.lowQuery
 
-	// Build the line's rune representation, reusing buffers.
+	// Build the line's rune representation and the rune index at which each
+	// cell starts, reusing buffers. Ranging over Content decodes runes
+	// without allocating a []rune per cell.
 	s.lineBuf = s.lineBuf[:0]
+	s.cellStart = s.cellStart[:0]
 	for _, c := range line {
+		s.cellStart = append(s.cellStart, len(s.lineBuf))
 		for _, r := range c.Content {
 			s.lineBuf = append(s.lineBuf, r)
 		}
@@ -181,27 +189,34 @@ func (s *Search) Highlight(line []emulator.Cell, absLine int, bg emulator.Color,
 	s.lowerBuf = lowerInto(s.lowerBuf[:0], s.lineBuf)
 	text := s.lowerBuf
 
+	// cellEnd(i) is the rune index one past line[i]'s last rune.
+	cellEnd := func(i int) int {
+		if i+1 < len(s.cellStart) {
+			return s.cellStart[i+1]
+		}
+		return len(s.lineBuf)
+	}
+	// Matches are found left to right, so the cell cursor only advances:
+	// every cell is visited at most once across all matches of the line.
+	ci := 0
 	for from := 0; ; {
 		idx := indexFrom(text, low, from)
 		if idx < 0 {
 			return
 		}
-		// Map rune indices back onto cells: cells hold at most one rune each
-		// (continuation cells hold none).
-		runePos := 0
-		for j, c := range line {
-			n := len([]rune(c.Content))
-			if runePos+n > idx && runePos < idx+len(low) {
-				if styled {
-					line[j].Bg = bg
-					line[j].Reverse = false
-				} else {
-					line[j].Reverse = true
-				}
-			}
-			runePos += n
+		end := idx + len(low)
+		for ci < len(line) && cellEnd(ci) <= idx {
+			ci++
 		}
-		from = idx + len(low)
+		for j := ci; j < len(line) && s.cellStart[j] < end; j++ {
+			if styled {
+				line[j].Bg = bg
+				line[j].Reverse = false
+			} else {
+				line[j].Reverse = true
+			}
+		}
+		from = end
 	}
 }
 
@@ -225,13 +240,17 @@ func equalRunes(a, b []rune) bool {
 	return true
 }
 
-// index returns the index of needle in haystack, or -1.
+// index returns the index of needle in haystack, or -1. Comparison is
+// rune-by-rune: converting slices to strings per position (the naive
+// `string(a) == string(b)`) allocated twice per candidate on every scanned
+// line, which dominated an incremental-search rescan of a large scrollback.
 func index(haystack, needle []rune) int {
 	if len(needle) == 0 {
 		return 0
 	}
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if string(haystack[i:i+len(needle)]) == string(needle) {
+	n := len(needle)
+	for i := 0; i+n <= len(haystack); i++ {
+		if equalRunes(haystack[i:i+n], needle) {
 			return i
 		}
 	}

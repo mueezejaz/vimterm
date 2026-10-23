@@ -66,7 +66,7 @@ func TestReaderStoresErrorCurrentGen(t *testing.T) {
 	a.startReader(tt)
 	close(release)
 	waitClosed(t, tt.done)
-	if _, ok := tt.err.Load().(error); !ok {
+	if tt.err.Load() == nil {
 		t.Fatal("current-gen reader did not store its read error")
 	}
 }
@@ -82,7 +82,7 @@ func TestReaderDropsErrorAfterGenBump(t *testing.T) {
 	tt.gen.Add(1)
 	close(release)
 	time.Sleep(50 * time.Millisecond)
-	if _, ok := tt.err.Load().(error); ok {
+	if tt.err.Load() != nil {
 		t.Fatal("superseded reader stored its error into the tab")
 	}
 	select {
@@ -105,9 +105,12 @@ func TestRestartShellResetsTabError(t *testing.T) {
 	tt := a.tabs[a.active]
 	tt.sess = &fakeSession{}
 	a.sess = tt.sess
-	tt.err.Store(errors.New("previous session died"))
+	tt.err.Store(ptrError(errors.New("previous session died")))
 	a.restartShell()
-	if _, ok := tt.err.Load().(error); ok {
+	if tt.err.Load() != nil {
 		t.Fatal(":shell restart kept the previous session's read error")
 	}
 }
+
+// ptrError is a helper adapting an error to tabState.err's pointer slot.
+func ptrError(e error) *error { return &e }

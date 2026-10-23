@@ -13,9 +13,14 @@ type runeRow struct {
 	widths []int // widths[i] is the cell width of runes[i]
 }
 
-// rowOf flattens the given cell row.
+// rowOf flattens the given cell row. The three slices are pre-sized to the
+// cell count (an upper bound: each cell contributes at most a few runes) so
+// a flatten does not re-grow its buffers several times per line.
 func rowOf(cells []emulator.Cell) runeRow {
 	var row runeRow
+	row.runes = make([]rune, 0, len(cells))
+	row.cols = make([]int, 0, len(cells))
+	row.widths = make([]int, 0, len(cells))
 	col := 0
 	for _, c := range cells {
 		for _, r := range c.Content {

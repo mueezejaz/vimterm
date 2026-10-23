@@ -270,6 +270,17 @@ func (c *Console) Write(p []byte) (int, error) {
 	return c.WriteVT(p)
 }
 
+// WriteString implements io.StringWriter. The renderer assembles each frame
+// as a string; without this, io.WriteString would convert the whole frame to
+// a fresh []byte on every draw. WriteFile only reads the buffer, so lending
+// the string's backing bytes is safe.
+func (c *Console) WriteString(s string) (int, error) {
+	if len(s) == 0 {
+		return 0, nil
+	}
+	return c.WriteVT(unsafe.Slice(unsafe.StringData(s), len(s)))
+}
+
 // ThemeColors returns the host console's default foreground and background
 // RGB colors, read from the console color table at the default attribute
 // indices. Windows Terminal keeps this table in sync with its active color

@@ -34,6 +34,9 @@ func TestVTParserControlChars(t *testing.T) {
 		{0x7f, keybind.CodeBackspace, 0, 0},
 		{0x01, keybind.CodeRune, 'a', keybind.ModCtrl},
 		{0x1a, keybind.CodeRune, 'z', keybind.ModCtrl},
+		// A NUL is Ctrl+Space, not the Ctrl+` that a dead branch used to
+		// produce when the b <= 0x1a check ran first.
+		{0x00, keybind.CodeRune, ' ', keybind.ModCtrl},
 	}
 	for _, tt := range tests {
 		events := p.feed([]byte{tt.input})
