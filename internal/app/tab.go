@@ -218,7 +218,7 @@ func (a *App) reapTabs() {
 		select {
 		case <-t.done:
 			if p := t.err.Load(); p != nil && *p != nil {
-				a.err.Store(*p)
+				a.err.Store(p)
 			}
 			a.closeTab(i)
 			i-- // reconsider this index after removal
@@ -229,8 +229,8 @@ func (a *App) reapTabs() {
 
 // childError returns the error recorded for an exited session, if any.
 func (a *App) childError() error {
-	if e, ok := a.err.Load().(error); ok && e != nil {
-		return e
+	if p := a.err.Load(); p != nil && *p != nil {
+		return *p
 	}
 	return nil
 }

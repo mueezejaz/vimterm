@@ -114,3 +114,37 @@ func TestRestartShellResetsTabError(t *testing.T) {
 
 // ptrError is a helper adapting an error to tabState.err's pointer slot.
 func ptrError(e error) *error { return &e }
+
+// Two tabs exiting with read errors of different concrete types must not
+// panic the reaper: a.err used to be an atomic.Value, which panics when
+// stores mix concrete types, and read errors from different sessions are
+// under no obligation to share one.
+func TestReapTabsMixedErrorTypes(t *testing.T) {
+	a := realApp(t, 40, 6, "x\r\n")
+	a.quit = make(chan struct{})
+	t1 := a.tabs[a.active]
+	t2 := newTabState(&fakeSession{}, t1.emu, t1.rows)
+	a.tabs = append(a.tabs, t2)
+
+	t1.err.Store(ptrError(io.ErrClosedPipe)) // concrete: *errors.errorString
+	close(t1.done)
+	a.reapTabs()
+
+	t2.err.Store(ptrError(&timeoutError{})) // concrete: *timeoutError, different from above
+	close(t2.done)
+	a.reapTabs()
+
+	if got := a.childError(); got == nil {
+		t.Fatal("reapTabs dropped the recorded read error")
+	}
+	select {
+	case <-a.quit:
+	default:
+		t.Fatal("closing every tab did not quit the app")
+	}
+}
+
+// timeoutError is a distinct concrete error type for the mixed-type test.
+type timeoutError struct{}
+
+func (*timeoutError) Error() string { return "timeout" }

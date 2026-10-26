@@ -152,8 +152,11 @@ type App struct {
 	active int
 
 	// err holds the read error of whichever session exited with one; it is
-	// returned from Run after the last tab closes.
-	err atomic.Value
+	// returned from Run after the last tab closes. A pointer to error rather
+	// than atomic.Value: atomic.Value panics when stores mix concrete error
+	// types, and read errors from different sessions are under no obligation
+	// to share one.
+	err atomic.Pointer[error]
 
 	statusMu    sync.RWMutex
 	statusMsg_  string
