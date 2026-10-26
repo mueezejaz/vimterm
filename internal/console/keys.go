@@ -196,19 +196,39 @@ func KeyToBytes(k keybind.Key) []byte {
 		return altPrefixed("\x1b", k)
 	case keybind.CodeLeft, keybind.CodeRight, keybind.CodeUp, keybind.CodeDown,
 		keybind.CodeHome, keybind.CodeEnd:
-		final := map[keybind.Code]byte{
-			keybind.CodeLeft: 'D', keybind.CodeRight: 'C', keybind.CodeUp: 'A',
-			keybind.CodeDown: 'B', keybind.CodeHome: 'H', keybind.CodeEnd: 'F',
-		}[k.Code]
+		// A switch rather than a map literal: KeyToBytes runs once per
+		// passthrough keystroke and a composite map allocates on every call.
+		var final byte
+		switch k.Code {
+		case keybind.CodeLeft:
+			final = 'D'
+		case keybind.CodeRight:
+			final = 'C'
+		case keybind.CodeUp:
+			final = 'A'
+		case keybind.CodeDown:
+			final = 'B'
+		case keybind.CodeHome:
+			final = 'H'
+		default: // CodeEnd
+			final = 'F'
+		}
 		if m > 0 {
 			return csiParam(1, m, final)
 		}
 		return []byte{'\x1b', '[', final}
 	case keybind.CodeInsert, keybind.CodeDelete, keybind.CodePageUp, keybind.CodePageDown:
-		n := map[keybind.Code]int{
-			keybind.CodeInsert: 2, keybind.CodeDelete: 3,
-			keybind.CodePageUp: 5, keybind.CodePageDown: 6,
-		}[k.Code]
+		var n int
+		switch k.Code {
+		case keybind.CodeInsert:
+			n = 2
+		case keybind.CodeDelete:
+			n = 3
+		case keybind.CodePageUp:
+			n = 5
+		default: // CodePageDown
+			n = 6
+		}
 		if m > 0 {
 			return csiTilde(n, m)
 		}
