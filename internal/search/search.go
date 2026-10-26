@@ -3,6 +3,7 @@
 package search
 
 import (
+	"sort"
 	"unicode"
 
 	"vimterm/internal/emulator"
@@ -139,25 +140,30 @@ func (s *Search) Matches() []Match {
 
 // Next returns the first match strictly after (fromLine, fromCol), or false.
 // A fromCol of -1 means "before any column", so Next(l, -1) returns the first
-// match at or after line l.
+// match at or after line l. Matches are ascending, so a binary search; a
+// counted repeat (99999n) steps once per count and a linear scan made each
+// step proportional to the whole match list.
 func (s *Search) Next(fromLine, fromCol int) (Match, bool) {
-	for _, m := range s.matches {
-		if m.Line > fromLine || (m.Line == fromLine && m.Col > fromCol) {
-			return m, true
-		}
+	i := sort.Search(len(s.matches), func(i int) bool {
+		m := s.matches[i]
+		return m.Line > fromLine || (m.Line == fromLine && m.Col > fromCol)
+	})
+	if i == len(s.matches) {
+		return Match{}, false
 	}
-	return Match{}, false
+	return s.matches[i], true
 }
 
 // Prev returns the last match strictly before (fromLine, fromCol), or false.
 func (s *Search) Prev(fromLine, fromCol int) (Match, bool) {
-	for i := len(s.matches) - 1; i >= 0; i-- {
+	hi := sort.Search(len(s.matches), func(i int) bool {
 		m := s.matches[i]
-		if m.Line < fromLine || (m.Line == fromLine && m.Col < fromCol) {
-			return m, true
-		}
+		return m.Line > fromLine || (m.Line == fromLine && m.Col >= fromCol)
+	})
+	if hi == 0 {
+		return Match{}, false
 	}
-	return Match{}, false
+	return s.matches[hi-1], true
 }
 
 // Highlight marks every occurrence of the query in the given buffer line. When
