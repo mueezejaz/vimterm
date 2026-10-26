@@ -35,6 +35,10 @@ func realApp(t *testing.T, cols, hostRows int, content string) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
+	keymaps["operator"], err = operatorKeymap(leader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	termRows := terminalRows(hostRows)
 	emu := emulator.New(cols, termRows)
 	if _, err := emu.Write([]byte(content)); err != nil {

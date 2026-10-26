@@ -15,6 +15,8 @@ var builtinCommands = map[string]bool{
 	"rename":     true,
 	"noh":        true,
 	"nohlsearch": true,
+	"reg":        true,
+	"registers":  true,
 }
 
 // parseCommand splits a command line into name and arguments. Empty or
@@ -72,10 +74,18 @@ func (a *App) execCommand(line string) {
 		a.dirty.Store(true)
 		a.setStatusMsg("")
 		return
+	case "reg", "registers":
+		a.setStatusMsg(a.registersSummary())
+		return
 	}
 	if seq, ok := a.customCommand(name); ok {
 		a.replayKeys(seq)
 		return
 	}
 	a.setStatusMsg("unknown command: " + name)
+}
+
+// registersSummary shows the register file on the status line (:reg).
+func (a *App) registersSummary() string {
+	return a.regs.registersSummary()
 }

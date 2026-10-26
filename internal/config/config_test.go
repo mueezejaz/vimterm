@@ -165,3 +165,43 @@ func TestEnsureDefaultIsValidTOML(t *testing.T) {
 		t.Fatal("cfg is nil")
 	}
 }
+
+// TestLoadMigratesLegacyOperatorBindings verifies that a config written by
+// an older default file (which pinned dw/db/yy and visual d) does not shadow
+// the operator keys, while customized bindings survive untouched.
+func TestLoadMigratesLegacyOperatorBindings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	content := `
+[keybindings.normal]
+"dw" = "delete_word"
+"db" = "delete_word_back"
+"yy" = "yank_line"
+"dd" = "goto_bottom"
+
+[keybindings.visual]
+"d" = "yank"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.Keybindings.Normal["dw"]; ok {
+		t.Error("legacy dw binding survived migration; bare d would never match")
+	}
+	if _, ok := cfg.Keybindings.Normal["db"]; ok {
+		t.Error("legacy db binding survived migration")
+	}
+	if _, ok := cfg.Keybindings.Normal["yy"]; ok {
+		t.Error("legacy yy binding survived migration")
+	}
+	if got, ok := cfg.Keybindings.Normal["dd"]; !ok || got[0] != "goto_bottom" {
+		t.Errorf("customized dd binding was dropped: %v", got)
+	}
+	if got, ok := cfg.Keybindings.Visual["d"]; !ok || got[0] != "delete_visual" {
+		t.Errorf("visual d should fall back to delete_visual, got %v", got)
+	}
+}

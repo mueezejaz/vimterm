@@ -35,6 +35,10 @@ func newMotionApp(t *testing.T, cols, rows int, content string) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
+	keymaps["operator"], err = operatorKeymap(leader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	emu := emulator.New(cols, rows)
 	if _, err := emu.Write([]byte(content)); err != nil {
 		t.Fatal(err)

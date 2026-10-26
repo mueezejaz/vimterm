@@ -40,6 +40,19 @@ var countAware = map[keybind.Action]bool{
 	keybind.ActionYankLine:       true,
 	keybind.ActionNextTab:        true,
 	keybind.ActionPrevTab:        true,
+	keybind.ActionOpDelete:       true,
+	keybind.ActionOpChange:       true,
+	keybind.ActionOpYank:         true,
+}
+
+// countKeeping lists actions that must not clear the typed count when they
+// match: the register and mark prefixes run before the counted command
+// itself, so 2"adw and 2`a must keep the 2 alive across the prefix.
+var countKeeping = map[keybind.Action]bool{
+	keybind.ActionRegisterPrefix: true,
+	keybind.ActionMarkPrefix:     true,
+	keybind.ActionJumpMark:       true,
+	keybind.ActionJumpMarkLine:   true,
 }
 
 // takeCount returns the count handed off before this action, or 1 when no

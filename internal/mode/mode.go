@@ -16,6 +16,9 @@ const (
 	// ModeVisualLine: line-wise selection; movement keys extend the
 	// selection to whole lines.
 	ModeVisualLine
+	// ModeOperator: an operator (d/c/y) is waiting for a motion or text
+	// object; the next key completes the operation instead of moving.
+	ModeOperator
 )
 
 // String returns the status-line label for the mode.
@@ -27,6 +30,8 @@ func (m Mode) String() string {
 		return "VISUAL"
 	case ModeVisualLine:
 		return "VISUAL LINE"
+	case ModeOperator:
+		return "OPERATOR"
 	default:
 		return "NORMAL"
 	}

@@ -152,13 +152,20 @@ Available actions:
 | action | action |
 |---|---|
 | `move_left` `move_down` `move_up` `move_right` | `goto_top` `goto_bottom` |
-| `move_line_end` | `scroll_up` `scroll_down` | `enter_insert` `enter_insert_after` `enter_insert_end` `enter_insert_home` `enter_normal` |
+| `move_line_end` `move_line_beg` `move_line_start` | `scroll_up` `scroll_down` | `enter_insert` `enter_insert_after` `enter_insert_end` `enter_insert_home` `enter_normal` |
 | `search_forward` `search_next` `search_prev` | `command_prompt` `rename_prompt` |
-| `enter_visual` `enter_visual_line` `cancel_visual` | `yank` `paste` `paste_before` |
-| `yank_line` `delete_word` `delete_word_back` | `record_macro` `play_macro` `repeat_last` |
+| `enter_visual` `enter_visual_line` `cancel_visual` | `yank` `delete_visual` `paste` `paste_before` |
+| `yank_line` `delete_word` `delete_word_back` | `op_delete` `op_change` `op_yank` |
+| `register_prefix` `mark_prefix` `jump_mark` `jump_mark_line` | `record_macro` `play_macro` `repeat_last` |
 | `find_char` `find_char_back` `find_until` `find_until_back` `find_next` `find_prev` | `move_word` `move_word_back` `move_word_end` `move_word_upper` `move_word_back_upper` `move_word_end_upper` |
 | `next_tab` `prev_tab` `new_tab` | `tab_search` `quit` |
 
 ### Default bindings
 
-Normal mode mirrors Vim: `h/j/k/l` and arrows move, `gg`/`G` jump, `$` goes to end of line, `ctrl+u`/`ctrl+d` scroll, `i`/`a`/`A`/`I` enter insert, `/` searches (`n`/`N` next/prev), `:` opens the command prompt, `v`/`V` visual, `y`/`p`/`P` yank/paste, `yy` yanks the whole line (with a count, several lines), `dw`/`db` delete (and cut) the word forward/backward, `q`/`@` record/play macro, `.` repeats the last command, `f`/`F`/`t`/`T`/`;`/`,` find, `w`/`b`/`e` and `W`/`B`/`E` word motions, `gt`/`gT` switch tabs, `leader+nt` opens a new tab and asks for its name, `leader+tt` opens the tab switcher popup, `ctrl+q` quits. Insert mode binds only `esc` and `ctrl+q`; everything else types through to the shell.
+Normal mode mirrors Vim: `h/j/k/l` and arrows move, `gg`/`G` jump, `$` goes to end of line, `0` to column zero, `ctrl+u`/`ctrl+d` scroll, `i`/`a`/`A`/`I` enter insert, `/` searches (`n`/`N` next/prev), `:` opens the command prompt, `v`/`V` visual, `p`/`P` paste, `q`/`@` record/play macro, `.` repeats the last command, `f`/`F`/`t`/`T`/`;`/`,` find, `w`/`b`/`e` and `W`/`B`/`E` word motions, `gt`/`gT` switch tabs, `leader+nt` opens a new tab and asks for its name, `leader+tt` opens the tab switcher popup, `ctrl+q` quits. Insert mode binds only `esc` and `ctrl+q`; everything else types through to the shell.
+
+**Operators** — `d`, `c` and `y` wait for a motion or text object and apply delete/change/yank over the covered range: `dw`/`db` words, `d$` to end of line, `d0` to column zero, `d^` to first non-blank, `df{char}`/`dt{char}` through or up to a character, `dj`/`dk` linewise, `dd`/`cc`/`yy` linewise with a count, `diw`/`daw` inner/around word, `diW`/`aW` for WORDs, `di"`/`da"` (also `'` and backtick) quoted strings, `di(`/`da(` (also `[`, `{`, `<`) bracket pairs. Counts compose: `2d3w` deletes six words. `.` repeats the whole operator with its count. esc cancels a pending operator. In visual mode `d`/`x` delete the selection.
+
+**Registers** — yanks and deletes go into the unnamed register; `"0` holds the last yank, `"1`–`"9` rotate the last deletes, and `"a`–`"z` hold named text (`"A` appends). A `"` prefix directs the next command: `"ayiw`, `"adw`, `"ap`. Deletes never touch the Windows clipboard; yanks still mirror to it, and `"+p`/`"*p` paste from the clipboard. A bare `p` pastes the unnamed register once one exists, falling back to the clipboard. `:reg` lists the non-empty registers.
+
+**Marks** — `m{letter}` records the cursor position, `` `{letter} `` jumps back to the exact cell and `'{letter}` to the line's first non-blank character. Marks are buffer positions, so they can drift when the scrollback window slides; jumps clamp into the current buffer.

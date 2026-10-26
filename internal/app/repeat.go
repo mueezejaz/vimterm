@@ -18,6 +18,9 @@ const (
 type repeatUnit struct {
 	kind unitKind
 	keys []keybind.Key
+	// count is the composed count the unit was originally run with; replay
+	// restores it so 2dw . repeats the double-count deletion (0 = none).
+	count int
 }
 
 // nonRepeatable lists engine actions that must not overwrite the repeat
@@ -62,6 +65,15 @@ var nonRepeatable = map[keybind.Action]bool{
 	keybind.ActionNextTab:          true,
 	keybind.ActionPrevTab:          true,
 	keybind.ActionTabPopup:         true,
+	keybind.ActionOpDelete:         true,
+	keybind.ActionOpChange:         true,
+	keybind.ActionOpYank:           true,
+	keybind.ActionDeleteVisual:     true,
+	keybind.ActionRegisterPrefix:   true,
+	keybind.ActionMarkPrefix:       true,
+	keybind.ActionJumpMark:         true,
+	keybind.ActionJumpMarkLine:     true,
+	keybind.ActionMoveLineStart:    true,
 }
 
 // repeatTracker remembers the last repeatable unit and the current insert
@@ -92,6 +104,16 @@ func (t *repeatTracker) noteAction(action keybind.Action, seq []keybind.Key) {
 // noteBurst records a passthrough key typed during insert mode.
 func (t *repeatTracker) noteBurst(k keybind.Key) {
 	t.burst = append(t.burst, k)
+}
+
+// noteOperator records a completed operator (d/c/y + motion) as the repeat
+// unit: the operator keys and the motion keys together, with the composed
+// count so "." replays 2dw as a double deletion.
+func (t *repeatTracker) noteOperator(seq []keybind.Key, count int) {
+	if len(seq) == 0 {
+		return
+	}
+	t.last = repeatUnit{kind: unitKeys, keys: append([]keybind.Key(nil), seq...), count: count}
 }
 
 // unit returns the current repeatable unit.

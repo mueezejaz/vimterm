@@ -81,6 +81,12 @@ func editLine(a *App, line int) string {
 	return strings.TrimRight(string(a.bufferLine(line)), " ")
 }
 
+// regText returns a register's content (0 = unnamed) for assertions.
+func regText(a *App, reg rune) string {
+	text, _ := a.regs.get(reg)
+	return text
+}
+
 func TestYankLine(t *testing.T) {
 	a, clip := editApp(t, "hello world\r\nsecond line\r\n")
 	press(t, a, keybind.NewRune('y', 0))
@@ -124,11 +130,14 @@ func TestYankLineSingleBlankLine(t *testing.T) {
 }
 
 func TestDeleteWordForward(t *testing.T) {
-	a, clip := editApp(t, "foo bar baz\r\n")
+	a, _ := editApp(t, "foo bar baz\r\n")
 	press(t, a, keybind.NewRune('d', 0))
 	press(t, a, keybind.NewRune('w', 0))
-	if got := clip.String(); got != "foo " {
-		t.Fatalf("dw: clipboard = %q, want %q", got, "foo ")
+	if got := regText(a, 0); got != "foo " {
+		t.Fatalf("dw: unnamed register = %q, want %q", got, "foo ")
+	}
+	if got := regText(a, '1'); got != "foo " {
+		t.Fatalf("dw: numbered register = %q, want %q", got, "foo ")
 	}
 	if got := editLine(a, 0); got != "bar baz" {
 		t.Fatalf("dw: line = %q, want %q", got, "bar baz")
@@ -139,12 +148,12 @@ func TestDeleteWordForward(t *testing.T) {
 }
 
 func TestDeleteWordMidWord(t *testing.T) {
-	a, clip := editApp(t, "foo bar baz\r\n")
+	a, _ := editApp(t, "foo bar baz\r\n")
 	a.cur.Col = 2
 	press(t, a, keybind.NewRune('d', 0))
 	press(t, a, keybind.NewRune('w', 0))
-	if got := clip.String(); got != "o " {
-		t.Fatalf("dw mid-word: clipboard = %q, want %q", got, "o ")
+	if got := regText(a, 0); got != "o " {
+		t.Fatalf("dw mid-word: unnamed register = %q, want %q", got, "o ")
 	}
 	if got := editLine(a, 0); got != "fobar baz" {
 		t.Fatalf("dw mid-word: line = %q, want %q", got, "fobar baz")
@@ -155,12 +164,12 @@ func TestDeleteWordMidWord(t *testing.T) {
 }
 
 func TestDeleteWordLastWord(t *testing.T) {
-	a, clip := editApp(t, "foo bar\r\n")
+	a, _ := editApp(t, "foo bar\r\n")
 	a.cur.Col = 4
 	press(t, a, keybind.NewRune('d', 0))
 	press(t, a, keybind.NewRune('w', 0))
-	if got := clip.String(); got != "bar" {
-		t.Fatalf("dw last word: clipboard = %q, want %q", got, "bar")
+	if got := regText(a, 0); got != "bar" {
+		t.Fatalf("dw last word: unnamed register = %q, want %q", got, "bar")
 	}
 	if got := editLine(a, 0); got != "foo" {
 		t.Fatalf("dw last word: line = %q, want %q", got, "foo")
@@ -171,12 +180,12 @@ func TestDeleteWordLastWord(t *testing.T) {
 }
 
 func TestDeleteWordForwardCount(t *testing.T) {
-	a, clip := editApp(t, "one two three\r\n")
+	a, _ := editApp(t, "one two three\r\n")
 	for _, k := range []rune{'2', 'd', 'w'} {
 		press(t, a, keybind.NewRune(k, 0))
 	}
-	if got := clip.String(); got != "one two " {
-		t.Fatalf("2dw: clipboard = %q, want %q", got, "one two ")
+	if got := regText(a, 0); got != "one two " {
+		t.Fatalf("2dw: unnamed register = %q, want %q", got, "one two ")
 	}
 	if got := editLine(a, 0); got != "three" {
 		t.Fatalf("2dw: line = %q, want %q", got, "three")
@@ -184,12 +193,12 @@ func TestDeleteWordForwardCount(t *testing.T) {
 }
 
 func TestDeleteWordBack(t *testing.T) {
-	a, clip := editApp(t, "foo bar baz\r\n")
+	a, _ := editApp(t, "foo bar baz\r\n")
 	a.cur.Col = 6
 	press(t, a, keybind.NewRune('d', 0))
 	press(t, a, keybind.NewRune('b', 0))
-	if got := clip.String(); got != "ba" {
-		t.Fatalf("db: clipboard = %q, want %q", got, "ba")
+	if got := regText(a, 0); got != "ba" {
+		t.Fatalf("db: unnamed register = %q, want %q", got, "ba")
 	}
 	if got := editLine(a, 0); got != "foo r baz" {
 		t.Fatalf("db: line = %q, want %q", got, "foo r baz")
@@ -200,12 +209,12 @@ func TestDeleteWordBack(t *testing.T) {
 }
 
 func TestDeleteWordBackAtWordStart(t *testing.T) {
-	a, clip := editApp(t, "foo bar baz\r\n")
+	a, _ := editApp(t, "foo bar baz\r\n")
 	a.cur.Col = 4
 	press(t, a, keybind.NewRune('d', 0))
 	press(t, a, keybind.NewRune('b', 0))
-	if got := clip.String(); got != "foo " {
-		t.Fatalf("db at word start: clipboard = %q, want %q", got, "foo ")
+	if got := regText(a, 0); got != "foo " {
+		t.Fatalf("db at word start: unnamed register = %q, want %q", got, "foo ")
 	}
 	if got := editLine(a, 0); got != "bar baz" {
 		t.Fatalf("db at word start: line = %q, want %q", got, "bar baz")
@@ -216,11 +225,11 @@ func TestDeleteWordBackAtWordStart(t *testing.T) {
 }
 
 func TestDeleteWordBackNothingAtLineStart(t *testing.T) {
-	a, clip := editApp(t, "foo\r\n")
+	a, _ := editApp(t, "foo\r\n")
 	press(t, a, keybind.NewRune('d', 0))
 	press(t, a, keybind.NewRune('b', 0))
-	if got := clip.String(); got != "" {
-		t.Fatalf("db at line start: clipboard = %q, want empty", got)
+	if got := regText(a, 0); got != "" {
+		t.Fatalf("db at line start: unnamed register = %q, want empty", got)
 	}
 	if got := editLine(a, 0); got != "foo" {
 		t.Fatalf("db at line start: line = %q, want %q", got, "foo")
@@ -228,13 +237,13 @@ func TestDeleteWordBackNothingAtLineStart(t *testing.T) {
 }
 
 func TestDeleteWordForwardCrossesLines(t *testing.T) {
-	a, clip := editApp(t, "foo\r\nbar baz\r\n")
+	a, _ := editApp(t, "foo\r\nbar baz\r\n")
 	a.cur.Col = 1
 	for _, k := range []rune{'2', 'd', 'w'} {
 		press(t, a, keybind.NewRune(k, 0))
 	}
-	if got := clip.String(); got != "oo\nbar " {
-		t.Fatalf("2dw across lines: clipboard = %q, want %q", got, "oo\nbar ")
+	if got := regText(a, 0); got != "oo\nbar " {
+		t.Fatalf("2dw across lines: unnamed register = %q, want %q", got, "oo\nbar ")
 	}
 	if got := editLine(a, 0); got != "f" {
 		t.Fatalf("2dw across lines: line 0 = %q, want %q", got, "f")
@@ -255,15 +264,10 @@ func TestDeleteWordInScrollback(t *testing.T) {
 	if a.emu.ScrollbackLen() == 0 {
 		t.Fatal("expected content to scroll off into scrollback")
 	}
-	var clip strings.Builder
-	a.clipWrite = func(s string) error {
-		clip.WriteString(s)
-		return nil
-	}
 	press(t, a, keybind.NewRune('d', 0))
 	press(t, a, keybind.NewRune('w', 0))
-	if got := clip.String(); got != "word " {
-		t.Fatalf("dw in scrollback: clipboard = %q, want %q", got, "word ")
+	if got := regText(a, 0); got != "word " {
+		t.Fatalf("dw in scrollback: unnamed register = %q, want %q", got, "word ")
 	}
 	if got := editLine(a, 0); got != "line 0" {
 		t.Fatalf("dw in scrollback: line 0 = %q, want %q", got, "line 0")

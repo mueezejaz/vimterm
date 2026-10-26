@@ -44,6 +44,10 @@ func newTabTestApp(t *testing.T, n int) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
+	keymaps["operator"], err = operatorKeymap(leader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	a.engine.SetKeymaps(keymaps)
 	a.engine.SetTimeout(time.Second)
 	a.actions = a.actionMap()

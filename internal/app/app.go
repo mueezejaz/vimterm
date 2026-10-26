@@ -115,6 +115,16 @@ type App struct {
 	search          *search.Search
 	preSearchOffset int
 
+	// Operator-pending state, text registers, marks, and the pending
+	// register/mark prefixes (all owned by the main loop goroutine). regs
+	// and marks are usable zero values; their maps initialize lazily.
+	op          opState
+	regs        registers
+	marks       markSet
+	markPending byte
+	regPending  bool
+	opReg       rune
+
 	// Virtual cursor and visual selection in buffer coordinates.
 	cur      selection.Pos
 	curValid bool
@@ -465,6 +475,12 @@ func (a *App) applyConfig(cfg *config.Config) error {
 		modeName(mode.ModeVisualLine): tables["visual"],
 	}
 	keymaps, err := keybind.BuildKeymaps(bindings, leader)
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	// The operator-pending keymap is code-built, not user-configured: it
+	// mirrors the motion tokens so d/c/y can wait for them.
+	keymaps[modeName(mode.ModeOperator)], err = operatorKeymap(leader)
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
@@ -863,11 +879,48 @@ func (a *App) handleKey(k keybind.Key) {
 			// Not macro-related (or recorded): fall through to the engine.
 		}
 	}
+	// A pending mark prefix: the next letter names the mark to set (after m)
+	// or jump to (after ` or ').
+	if a.markPending != 0 {
+		if r, ok := markNameKey(k); ok {
+			p := a.markPending
+			a.markPending = 0
+			switch p {
+			case 'm':
+				a.setMark(r)
+			case '`':
+				a.jumpMark(r, false)
+			case '\'':
+				a.jumpMark(r, true)
+			}
+			a.dirty.Store(true)
+			return
+		}
+		a.markPending = 0
+		a.count = 0
+	}
+	// A pending register prefix: the next name selects the register the next
+	// yank/delete/paste uses.
+	if a.regPending {
+		if r, ok := registerNameKey(k); ok {
+			a.regPending = false
+			a.opReg = r
+			a.dirty.Store(true)
+			return
+		}
+		a.regPending = false
+		a.count = 0
+	}
 	if a.find.pending() {
-		// f/F/t/T: consume the next printable key as the target. Any other
-		// key cancels the pending find and is handled normally.
+		// f/F/t/T: consume the next printable key as the target. In operator
+		// mode the target completes the operation instead of moving. Any
+		// other key cancels the pending find and is handled normally.
 		if ch, ok := isTarget(k); ok {
-			a.doFind(a.find.pd, a.find.pu, ch)
+			if a.mods.Is(mode.ModeOperator) {
+				a.opFindTarget(a.find.pd, a.find.pu, ch)
+			} else {
+				a.doFind(a.find.pd, a.find.pu, ch)
+			}
 			a.dirty.Store(true)
 			return
 		}
@@ -892,11 +945,19 @@ func (a *App) handleKey(k keybind.Key) {
 	res, actions := a.engine.Feed(modeName(a.mods.Current()), k)
 	switch res {
 	case keybind.Matched:
+		if a.mods.Is(mode.ModeOperator) {
+			// The operator keymap dispatches motions and text objects
+			// through the operator machinery instead of the action map.
+			a.runOperator(actions[0])
+			return
+		}
 		a.tracker.noteAction(actions[0], a.engine.LastSeq())
 		if countAware[actions[0]] {
 			a.cnt = a.count
 		}
-		a.count = 0
+		if !countKeeping[actions[0]] {
+			a.count = 0
+		}
 		for _, act := range actions {
 			fn, ok := a.actions[act]
 			if !ok {
@@ -911,8 +972,12 @@ func (a *App) handleKey(k keybind.Key) {
 		}
 	case keybind.NoMatch:
 		// Unbound keys pass through only in insert mode; in normal mode they
-		// are swallowed.
+		// are swallowed. A dead-end key also cancels a pending operator.
 		a.count = 0
+		if a.mods.Is(mode.ModeOperator) {
+			a.cancelOperator()
+			a.dirty.Store(true)
+		}
 		if a.mods.Is(mode.ModeInsert) {
 			a.tracker.noteBurst(k)
 			a.passthrough(k)
@@ -1659,6 +1724,8 @@ func modeName(m mode.Mode) string {
 		return "visual"
 	case mode.ModeVisualLine:
 		return "visual_line"
+	case mode.ModeOperator:
+		return "operator"
 	default:
 		return "normal"
 	}

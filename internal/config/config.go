@@ -306,10 +306,14 @@ func defaultNormalBindings() map[string]Binding {
 		":":         {"command_prompt"},
 		"v":         {"enter_visual"},
 		"V":         {"enter_visual_line"},
-		"y":         {"yank"},
-		"yy":        {"yank_line"},
-		"dw":        {"delete_word"},
-		"db":        {"delete_word_back"},
+		"d":         {"op_delete"},
+		"c":         {"op_change"},
+		"y":         {"op_yank"},
+		"0":         {"move_line_start"},
+		"\"":        {"register_prefix"},
+		"m":         {"mark_prefix"},
+		"`":         {"jump_mark"},
+		"'":         {"jump_mark_line"},
 		"p":         {"paste"},
 		"P":         {"paste_before"},
 		"q":         {"record_macro"},
@@ -362,7 +366,8 @@ func defaultVisualBindings() map[string]Binding {
 		"v":      {"enter_visual"},
 		"V":      {"enter_visual_line"},
 		"y":      {"yank"},
-		"d":      {"yank"},
+		"d":      {"delete_visual"},
+		"x":      {"delete_visual"},
 		"p":      {"paste"},
 		"P":      {"paste_before"},
 		"f":      {"find_char"},
@@ -400,6 +405,38 @@ func DefaultPath() string {
 		appdata = home
 	}
 	return filepath.Join(appdata, "vimterm", "config.toml")
+}
+
+// migrateLegacyOperatorBindings rewrites user-config entries still pinned at
+// their pre-operator defaults. Older default config files wrote
+// dw/db/yy = delete_word/delete_word_back/yank_line and visual d = yank;
+// because a bound prefix always wins in the key engine, those entries would
+// make the bare d/c/y operator keys unreachable forever. A config written by
+// an old default file never chose them deliberately, so entries exactly at
+// the legacy value are replaced with the new default (or removed when there
+// is none); anything a user actually customized survives.
+func migrateLegacyOperatorBindings(table map[string]Binding, legacy, replacement map[string]Binding) {
+	for token, old := range legacy {
+		v, ok := table[token]
+		if !ok || len(v) != len(old) {
+			continue
+		}
+		same := true
+		for i := range old {
+			if v[i] != old[i] {
+				same = false
+				break
+			}
+		}
+		if !same {
+			continue
+		}
+		if repl, ok := replacement[token]; ok && len(repl) > 0 {
+			table[token] = repl
+		} else {
+			delete(table, token)
+		}
+	}
 }
 
 // EnsureDefault writes a commented default config file if none exists.
@@ -577,6 +614,13 @@ func Load(path string) (*Config, error) {
 				merged[k] = v
 			}
 		}
+		migrateLegacyOperatorBindings(merged,
+			map[string]Binding{
+				"dw": {"delete_word"},
+				"db": {"delete_word_back"},
+				"yy": {"yank_line"},
+			},
+			nil)
 		cfg.Keybindings.Normal = merged
 	}
 	if probe.Keybindings.Insert != nil && len(*probe.Keybindings.Insert) > 0 {
@@ -599,6 +643,13 @@ func Load(path string) (*Config, error) {
 				merged[k] = v
 			}
 		}
+		migrateLegacyOperatorBindings(merged,
+			map[string]Binding{
+				"d": {"yank"},
+			},
+			map[string]Binding{
+				"d": defaultVisualBindings()["d"],
+			})
 		cfg.Keybindings.Visual = merged
 	}
 	if probe.Commands != nil {
@@ -843,9 +894,18 @@ cursor = ""
 ":" = "command_prompt"
 "v" = "enter_visual"
 "V" = "enter_visual_line"
-"yy" = "yank_line"
-"dw" = "delete_word"
-"db" = "delete_word_back"
+# Operators: d/c/y wait for a motion or text object (w, $, 0, iw, a", ...);
+# dd/cc/yy are linewise. "." repeats the whole operator.
+"d" = "op_delete"
+"c" = "op_change"
+"y" = "op_yank"
+"0" = "move_line_start"
+# " names the register for the next yank/delete/paste ("ayy, "+p).
+"\"" = "register_prefix"
+# m sets a mark; the backtick and ' jump to it (exact column / first non-blank).
+"m" = "mark_prefix"
+"` + "`" + `" = "jump_mark"
+"'" = "jump_mark_line"
 "q" = "record_macro"
 "@" = "play_macro"
 "." = "repeat_last"
@@ -891,7 +951,8 @@ cursor = ""
 "v" = "enter_visual"
 "V" = "enter_visual_line"
 "y" = "yank"
-"d" = "yank"
+"d" = "delete_visual"
+"x" = "delete_visual"
 "p" = "paste"
 "P" = "paste_before"
 "f" = "find_char"

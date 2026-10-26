@@ -3,44 +3,51 @@ package app
 import (
 	"fmt"
 	"strings"
+
+	"vimterm/internal/selection"
 )
 
-// yankLine implements yy: it copies the whole line under the cursor to the
-// clipboard, trimmed of the terminal's width padding. A count yanks that
-// many lines, joined with newlines.
+// yankLine implements the yy operator: it copies the whole lines under the
+// cursor into the registers and the clipboard, trimmed of the terminal's
+// width padding.
 func (a *App) yankLine() {
-	n := a.takeCount()
-	a.syncCursor()
-	var sb strings.Builder
-	actual := 0
-	for i := 0; i < n; i++ {
-		line := a.bufferLine(a.cur.Line + i)
-		if line == nil {
-			break
-		}
-		text := strings.TrimRight(string(line), " ")
-		if actual > 0 {
-			sb.WriteByte('\n')
-		}
-		sb.WriteString(text)
-		actual++
-	}
-	if err := a.clipWrite(sb.String()); err != nil {
-		a.setStatusMsg("clipboard: " + err.Error())
-	} else {
-		a.setStatusMsg(fmt.Sprintf("%d lines yanked", actual))
-	}
-	a.dirty.Store(true)
+	a.yankOpRange(a.linewiseRange(a.takeCount()))
 }
 
-// deleteWord implements dw (dir +1) and db (dir -1): it removes the word
-// under or after the cursor (dw) or the word before it (db) from the buffer,
-// copies the deleted text to the clipboard, and places the cursor at the
-// start of the deleted region. A count repeats the deletion; dw continues
-// onto the next line when a line runs out of words.
+// deleteWord implements dw (dir +1) and db (dir -1) with the count from the
+// count prefix.
 func (a *App) deleteWord(dir int) {
-	n := a.takeCount()
+	a.deleteWordCount(dir, wordKindWord, a.takeCount())
+}
+
+// deleteWordCount removes n words under or after the cursor (dir +1, dw) or
+// before it (dir -1, db) from the buffer, stores the deleted text in the
+// registers, and places the cursor at the start of the deleted region. dw
+// continues onto the next line when a line runs out of words.
+func (a *App) deleteWordCount(dir, kind, n int) {
 	a.syncCursor()
+	segs, text, end := a.scanWordDelete(dir, kind, n, true)
+	a.cur.Line, a.cur.Col = end.Line, end.Col
+	a.clampCursor()
+	a.ensureCursorVisible()
+	a.dirty.Store(true)
+	a.propagateDelete(segs)
+	if text == "" {
+		a.setStatusMsg("no word to delete")
+		return
+	}
+	a.storeDeleted(text)
+	a.setStatusMsg(fmt.Sprintf("%d words deleted", n))
+}
+
+// scanWordDelete walks n words (kind word/WORD) like dw/db, collecting the
+// covered text and the cell segments. With apply set, each segment is
+// deleted from the emulator as it is scanned — the walk continues on the
+// shifted line, so later segments are already in post-shift coordinates and
+// propagateDelete's contiguity rule sees shell-space coordinates. With apply
+// clear (yank) the buffer is untouched. The returned position is where the
+// cursor belongs: the start of the last deleted segment.
+func (a *App) scanWordDelete(dir, kind, n int, apply bool) ([]delSeg, string, selection.Pos) {
 	var sb strings.Builder
 	// segs are in cell columns: DeleteLineCells and the shell's line editor
 	// both work per cell, so a wide character is never split in half.
@@ -48,6 +55,7 @@ func (a *App) deleteWord(dir int) {
 	line := a.cur.Line
 	at := rowOf(a.bufferLineCells(line)).runeAt(a.cur.Col)
 	curCell := a.cur.Col
+	prevLine := line
 	for deleted := 0; deleted < n; {
 		cells := a.bufferLineCells(line)
 		if cells == nil {
@@ -56,9 +64,9 @@ func (a *App) deleteWord(dir int) {
 		row := rowOf(cells)
 		from, to := at, at
 		if dir > 0 {
-			if at < len(row.runes) && wordChar(wordKindWord, row.runes[at]) {
+			if at < len(row.runes) && wordChar(kind, row.runes[at]) {
 				end := at
-				for end < len(row.runes) && wordChar(wordKindWord, row.runes[end]) {
+				for end < len(row.runes) && wordChar(kind, row.runes[end]) {
 					end++
 				}
 				te := textEnd(row.runes)
@@ -67,13 +75,13 @@ func (a *App) deleteWord(dir int) {
 					to++
 				}
 			} else {
-				to = wordStart(row.runes, at, 1, wordKindWord)
+				to = wordStart(row.runes, at, 1, kind)
 				if to < 0 {
 					to = textEnd(row.runes) + 1
 				}
 			}
 		} else {
-			from = wordStart(row.runes, at, -1, wordKindWord)
+			from = wordStart(row.runes, at, -1, kind)
 			if from < 0 {
 				break
 			}
@@ -88,33 +96,20 @@ func (a *App) deleteWord(dir int) {
 			break
 		}
 		cellFrom, cellTo := row.colAt(from), row.colAt(to)
-		if line != a.cur.Line && sb.Len() > 0 {
+		if line != prevLine && sb.Len() > 0 {
 			sb.WriteByte('\n')
 		}
+		prevLine = line
 		sb.WriteString(string(row.runes[from:to]))
-		a.emu.DeleteLineCells(line, cellFrom, cellTo-cellFrom)
+		if apply {
+			a.emu.DeleteLineCells(line, cellFrom, cellTo-cellFrom)
+		}
 		segs = append(segs, delSeg{line, cellFrom, cellTo})
 		at = from
 		curCell = cellFrom
 		deleted++
-		if dir < 0 && from == to {
-			break
-		}
 	}
-	a.cur.Line, a.cur.Col = line, curCell
-	a.clampCursor()
-	a.ensureCursorVisible()
-	a.dirty.Store(true)
-	a.propagateDelete(segs)
-	if sb.Len() == 0 {
-		a.setStatusMsg("no word to delete")
-		return
-	}
-	if err := a.clipWrite(sb.String()); err != nil {
-		a.setStatusMsg("clipboard: " + err.Error())
-		return
-	}
-	a.setStatusMsg(fmt.Sprintf("%d words deleted", n))
+	return segs, sb.String(), selection.Pos{Line: line, Col: curCell}
 }
 
 // delSeg is one contiguous deleted range within a single buffer line, in

@@ -20,6 +20,7 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionMoveDown:         func() { a.moveCursor(a.takeCount(), 0) },
 		keybind.ActionMoveLineEnd:      a.moveLineEnd,
 		keybind.ActionMoveLineBeg:      a.moveLineBeg,
+		keybind.ActionMoveLineStart:    a.moveLineStart,
 		keybind.ActionScrollUp:         func() { a.countScroll(-1) },
 		keybind.ActionScrollDown:       func() { a.countScroll(1) },
 		keybind.ActionGotoTop:          func() { a.countGoto(true) },
@@ -38,6 +39,14 @@ func (a *App) actionMap() map[keybind.Action]func() {
 		keybind.ActionEnterVisLine:     a.enterVisualLine,
 		keybind.ActionCancelVisual:     a.cancelVisual,
 		keybind.ActionYank:             a.yank,
+		keybind.ActionDeleteVisual:     a.deleteVisual,
+		keybind.ActionOpDelete:         func() { a.beginOperator(keybind.ActionOpDelete) },
+		keybind.ActionOpChange:         func() { a.beginOperator(keybind.ActionOpChange) },
+		keybind.ActionOpYank:           func() { a.beginOperator(keybind.ActionOpYank) },
+		keybind.ActionRegisterPrefix:   func() { a.regPending = true },
+		keybind.ActionMarkPrefix:       func() { a.markPending = 'm' },
+		keybind.ActionJumpMark:         func() { a.markPending = '`' },
+		keybind.ActionJumpMarkLine:     func() { a.markPending = '\'' },
 		keybind.ActionRecordMacro:      a.recordMacro,
 		keybind.ActionPlayMacro:        a.playMacro,
 		keybind.ActionRepeatLast:       a.repeatLast,
@@ -149,7 +158,11 @@ func (a *App) repeatLast() {
 	u := a.tracker.unit()
 	switch u.kind {
 	case unitKeys:
+		if u.count > 0 {
+			a.count = u.count
+		}
 		a.replayKeys(u.keys)
+		a.count = 0
 	case unitShell:
 		for _, k := range u.keys {
 			if bytes := console.KeyToBytes(k); len(bytes) > 0 {
@@ -328,6 +341,16 @@ func (a *App) moveLineEnd() {
 		}
 	}
 	a.cur.Col = lastCol
+	a.clampCursor()
+	a.ensureCursorVisible()
+	a.afterCursorMove()
+}
+
+// moveLineStart moves the cursor to column 0 (the 0 key, when it is not a
+// count digit).
+func (a *App) moveLineStart() {
+	a.syncCursor()
+	a.cur.Col = 0
 	a.clampCursor()
 	a.ensureCursorVisible()
 	a.afterCursorMove()
@@ -682,7 +705,8 @@ func (a *App) enterNormal() {
 	a.dirty.Store(true)
 }
 
-// yank copies the visual selection to the Windows clipboard.
+// yank copies the visual selection to the registers and the Windows
+// clipboard.
 func (a *App) yank() {
 	if !a.sel.Active {
 		a.setStatusMsg("nothing selected")
@@ -698,6 +722,8 @@ func (a *App) yank() {
 	if text != "" {
 		lines++
 	}
+	a.regs.setYank(text, a.opReg)
+	a.opReg = 0
 	if err := a.clipWrite(text); err != nil {
 		a.setStatusMsg("clipboard: " + err.Error())
 	} else {

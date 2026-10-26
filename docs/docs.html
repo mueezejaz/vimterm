@@ -450,12 +450,13 @@ reset = "ctrl+u"     # :reset runs ctrl+u</code></pre>
           <tr><td><code>:</code></td><td><code>command_prompt</code></td><td>Open colon-command prompt</td></tr>
           <tr><td><code>v</code></td><td><code>enter_visual</code></td><td>Enter character-wise visual mode</td></tr>
           <tr><td><code>V</code></td><td><code>enter_visual_line</code></td><td>Enter line-wise visual mode</td></tr>
-          <tr><td><code>y</code></td><td><code>yank</code></td><td>Yank (copy) visual selection to clipboard</td></tr>
-          <tr><td><code>yy</code></td><td><code>yank_line</code></td><td>Yank whole line (with count: N lines)</td></tr>
-          <tr><td><code>dw</code></td><td><code>delete_word</code></td><td>Delete word forward (cuts to clipboard)</td></tr>
-          <tr><td><code>db</code></td><td><code>delete_word_back</code></td><td>Delete word backward</td></tr>
-          <tr><td><code>p</code></td><td><code>paste</code></td><td>Paste after cursor</td></tr>
-          <tr><td><code>P</code></td><td><code>paste_before</code></td><td>Paste before cursor</td></tr>
+          <tr><td><code>y</code></td><td><code>yank</code></td><td>Yank (copy) visual selection to register and clipboard</td></tr>
+          <tr><td><code>d</code> <code>c</code> <code>y</code> + motion</td><td><code>op_delete</code> <code>op_change</code> <code>op_yank</code></td><td>Operator-pending: delete/change/yank over a motion or text object (dw, d$, d0, dd, cc, yy, diw, daw, di&quot;, di(, df{char}, dt{char}, dj, ...)</td></tr>
+          <tr><td><code>&quot;</code></td><td><code>register_prefix</code></td><td>Name the register for the next command (&quot;ayiw, &quot;ap, &quot;+p)</td></tr>
+          <tr><td><code>m{char}</code></td><td><code>mark_prefix</code></td><td>Set a mark at the cursor</td></tr>
+          <tr><td><code>`{char}</code> <code>'{char}</code></td><td><code>jump_mark</code> <code>jump_mark_line</code></td><td>Jump to a mark (exact / first non-blank)</td></tr>
+          <tr><td><code>p</code></td><td><code>paste</code></td><td>Paste register (or clipboard) after cursor</td></tr>
+          <tr><td><code>P</code></td><td><code>paste_before</code></td><td>Paste register (or clipboard) before cursor</td></tr>
           <tr><td><code>q</code></td><td><code>record_macro</code></td><td>Start/stop macro recording</td></tr>
           <tr><td><code>@</code></td><td><code>play_macro</code></td><td>Play macro from register</td></tr>
           <tr><td><code>.</code></td><td><code>repeat_last</code></td><td>Repeat last command</td></tr>
@@ -512,8 +513,12 @@ reset = "ctrl+u"     # :reset runs ctrl+u</code></pre>
           <tr><td><code>command_prompt</code> <code>rename_prompt</code></td><td>Open colon-command / rename prompt</td></tr>
           <tr><td><code>enter_visual</code> <code>enter_visual_line</code> <code>cancel_visual</code></td><td>Visual mode control</td></tr>
           <tr><td><code>yank</code> <code>yank_line</code></td><td>Yank selection / whole line</td></tr>
+          <tr><td><code>op_delete</code> <code>op_change</code> <code>op_yank</code></td><td>Operator-pending d/c/y (wait for a motion or text object)</td></tr>
+          <tr><td><code>delete_visual</code></td><td>Delete the visual selection</td></tr>
+          <tr><td><code>register_prefix</code></td><td>Register prefix (&quot;a, &quot;0, &quot;1-9, &quot;+)</td></tr>
+          <tr><td><code>mark_prefix</code> <code>jump_mark</code> <code>jump_mark_line</code></td><td>Marks: set / jump exact / jump linewise</td></tr>
           <tr><td><code>paste</code> <code>paste_before</code></td><td>Paste after / before cursor</td></tr>
-          <tr><td><code>delete_word</code> <code>delete_word_back</code></td><td>Delete word forward / backward</td></tr>
+          <tr><td><code>delete_word</code> <code>delete_word_back</code></td><td>Delete word forward / backward (via operators)</td></tr>
           <tr><td><code>record_macro</code> <code>play_macro</code></td><td>Record / play macro</td></tr>
           <tr><td><code>repeat_last</code></td><td>Repeat last command (<code>.</code>)</td></tr>
           <tr><td><code>find_char</code> <code>find_char_back</code> <code>find_until</code> <code>find_until_back</code> <code>find_next</code> <code>find_prev</code></td><td>Character find motions</td></tr>

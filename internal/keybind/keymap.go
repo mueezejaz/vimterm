@@ -56,6 +56,15 @@ const (
 	ActionNewTab           Action = "new_tab"
 	ActionTabPopup         Action = "tab_search"
 	ActionCloseTab         Action = "close_tab"
+	ActionMoveLineStart    Action = "move_line_start"
+	ActionOpDelete         Action = "op_delete"
+	ActionOpChange         Action = "op_change"
+	ActionOpYank           Action = "op_yank"
+	ActionDeleteVisual     Action = "delete_visual"
+	ActionRegisterPrefix   Action = "register_prefix"
+	ActionMarkPrefix       Action = "mark_prefix"
+	ActionJumpMark         Action = "jump_mark"
+	ActionJumpMarkLine     Action = "jump_mark_line"
 )
 
 // AllActions lists every action the application understands. Config bindings
@@ -112,6 +121,15 @@ var AllActions = []Action{
 	ActionNewTab,
 	ActionTabPopup,
 	ActionCloseTab,
+	ActionMoveLineStart,
+	ActionOpDelete,
+	ActionOpChange,
+	ActionOpYank,
+	ActionDeleteVisual,
+	ActionRegisterPrefix,
+	ActionMarkPrefix,
+	ActionJumpMark,
+	ActionJumpMarkLine,
 }
 
 // IsKnownAction reports whether a is a recognized action name.
