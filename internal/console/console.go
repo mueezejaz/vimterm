@@ -108,6 +108,7 @@ type Console struct {
 	errc        chan error
 	done        chan struct{}
 	closeOnce   sync.Once
+	doneOnce    sync.Once
 	wg          sync.WaitGroup
 
 	// prevBtnState tracks the last mouse button state for release detection.
@@ -410,11 +411,20 @@ func (c *Console) mutateScreenInfo(fn func(*screenBufferInfoEx)) error {
 	return nil
 }
 
+// closeDone closes the done channel exactly once. Both the Close path and
+// the goroutines' panic handlers close it: a panicking input loop signals
+// errc and closes done so the app shuts down, and Close then runs during
+// cleanup — without the once, the second close would panic mid-teardown and
+// leave the host terminal in raw mode.
+func (c *Console) closeDone() {
+	c.doneOnce.Do(func() { close(c.done) })
+}
+
 // Close restores the original console modes and stops the input loop.
 func (c *Console) Close() error {
 	var errs []error
 	c.closeOnce.Do(func() {
-		close(c.done)
+		c.closeDone()
 		c.wg.Wait()
 		if c.inputDebugFile != nil {
 			c.inputDebugFile.Close()
@@ -453,7 +463,7 @@ func (c *Console) inputLoop() {
 			case c.errc <- fmt.Errorf("console input loop panic: %v", r):
 			default:
 			}
-			close(c.done)
+			c.closeDone()
 		}
 	}()
 	if c.vtIn {
@@ -528,7 +538,7 @@ func (c *Console) resizePoller() {
 			case c.errc <- fmt.Errorf("console resize poller panic: %v", r):
 			default:
 			}
-			close(c.done)
+			c.closeDone()
 		}
 	}()
 	var lastCols, lastRows int
