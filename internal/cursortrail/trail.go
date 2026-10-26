@@ -314,13 +314,17 @@ func (t *Trail) lifetime(e entry) time.Duration {
 
 // reserve makes room for one more entry. A full buffer never evicts a live
 // ghost: the oldest entry is dropped when it has already expired by this
-// entry's birth time, otherwise the buffer grows.
+// entry's birth time, otherwise the buffer grows. The one exception is the
+// trailMaxEntries cap, where there is no growing room left: the oldest entry
+// is dropped even when still alive, because appendEntry would otherwise
+// overwrite it while count grew past len(buf), corrupting the ring and making
+// Ghosts emit the same entry twice.
 func (t *Trail) reserve(at time.Time) {
 	if t.count == len(t.buf) {
 		front := (t.head - t.count + len(t.buf)) % len(t.buf)
-		if at.Sub(t.buf[front].t) > t.lifetime(t.buf[front]) {
+		if at.Sub(t.buf[front].t) > t.lifetime(t.buf[front]) || len(t.buf) >= trailMaxEntries {
 			t.count--
-		} else if len(t.buf) < trailMaxEntries {
+		} else {
 			t.grow(len(t.buf) * 2)
 		}
 	}
